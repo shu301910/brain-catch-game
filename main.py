@@ -13,6 +13,30 @@ from score_manager import ScoreManager
 from game import Game
 
 
+def find_japanese_font():
+    """OSに応じて日本語フォント名を返す。
+    見つからなければNoneを返してデフォルトフォントにフォールバック。"""
+    # 試す順番にフォント名を並べる（OS横断で対応）
+    candidates = [
+        # Windows
+        "msgothic",       # MS ゴシック
+        "meiryo",         # メイリオ
+        "yugothic",       # 游ゴシック
+        # Mac
+        "hiraginosans",   # ヒラギノ角ゴ
+        "hiraginomarugothicpron",
+        # Linux
+        "notosanscjkjp",  # Noto Sans CJK JP
+        "ipagothic",      # IPAゴシック
+        "takaogothic",
+    ]
+    available = pygame.font.get_fonts()  # 利用可能なフォント名リスト（小文字）
+    for name in candidates:
+        if name in available:
+            return name
+    return None  # 見つからなかった
+
+
 def main():
     """ゲームを実行するメイン関数"""
     # pygame初期化
@@ -23,12 +47,15 @@ def main():
     pygame.display.set_caption("脳トレキャッチゲーム")
     clock = pygame.time.Clock()
 
+    # 日本語フォントを探す（OS問わず動くように）
+    jp_font = find_japanese_font()
+
     # フォントを用意（用途別に4種類）
     fonts = {
-        "font": pygame.font.SysFont(None, 36),
-        "small": pygame.font.SysFont(None, 24),
-        "mini": pygame.font.SysFont(None, 20),
-        "big": pygame.font.SysFont(None, 48),
+        "font":  pygame.font.SysFont(jp_font, 36),
+        "small": pygame.font.SysFont(jp_font, 24),
+        "mini":  pygame.font.SysFont(jp_font, 20),
+        "big":   pygame.font.SysFont(jp_font, 48),
     }
 
     # 画像とハイスコア管理を準備
