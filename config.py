@@ -256,7 +256,7 @@ MONSTER_DEFS = [
      "max_hp": ENEMY_MAX_HP},
     {"name": "green",  "file": "monster_04_green.png",
      "resist": None,     "special": "invert",      "label": "Green",
-     "max_hp": 70},
+     "max_hp": ENEMY_MAX_HP},
     {"name": "dark",   "file": "monster_05_dark.png",
      "resist": None,     "special": "shuffle",     "label": "Dark",
      "max_hp": ENEMY_MAX_HP},
