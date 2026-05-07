@@ -4,6 +4,7 @@
 # このファイルを実行するとゲームが起動する
 # ============================================================
 
+import os
 import sys
 import pygame
 
@@ -37,6 +38,34 @@ def find_japanese_font():
     return None  # 見つからなかった
 
 
+def load_decorative_font(size):
+    """装飾フォント（Creepster：液体が垂れる風）を読み込む。
+    fonts/フォルダに無ければOSのフォント、それも無ければデフォルトに自動フォールバック。"""
+    # 1. プロジェクトのfonts/フォルダにあるCreepsterを最優先で使う
+    base_dirs = ["fonts", "."]
+    candidates = ["Creepster-Regular.ttf"]
+    for base in base_dirs:
+        for fname in candidates:
+            path = os.path.join(base, fname)
+            if os.path.exists(path):
+                # Creepsterは縦に細長いので、少し大きめのサイズで読み込む
+                return pygame.font.Font(path, int(size * 1.2))
+
+    # 2. ファイルが無い場合：OSにある雰囲気のあるフォントを使う
+    fallback_candidates = [
+        "impact",        # 力強い太字フォント
+        "bahnschrift",   # Windows10以降のモダンフォント
+        "arial",         # 最終フォールバック
+    ]
+    available = pygame.font.get_fonts()
+    for name in fallback_candidates:
+        if name in available:
+            return pygame.font.SysFont(name, size, bold=True)
+
+    # 3. それも無ければデフォルト
+    return pygame.font.SysFont(None, size, bold=True)
+
+
 def main():
     """ゲームを実行するメイン関数"""
     # pygame初期化
@@ -47,15 +76,17 @@ def main():
     pygame.display.set_caption("脳トレキャッチゲーム")
     clock = pygame.time.Clock()
 
-    # 日本語フォントを探す（OS問わず動くように）
-    jp_font = find_japanese_font()
+    # 日本語フォント（タイトル画面の「脳トレキャッチゲーム」用）
+    jp_font_name = find_japanese_font()
 
-    # フォントを用意（用途別に4種類）
+    # フォントを用意（基本はホラー装飾フォントCreepster、日本語用は別途用意）
     fonts = {
-        "font":  pygame.font.SysFont(jp_font, 36),
-        "small": pygame.font.SysFont(jp_font, 24),
-        "mini":  pygame.font.SysFont(jp_font, 20),
-        "big":   pygame.font.SysFont(jp_font, 48),
+        "font":  load_decorative_font(36),
+        "small": load_decorative_font(24),
+        "mini":  load_decorative_font(20),
+        "big":   load_decorative_font(48),
+        # 日本語用（タイトル画面など限定使用）
+        "jp_big": pygame.font.SysFont(jp_font_name, 48, bold=True),
     }
 
     # 画像とハイスコア管理を準備
