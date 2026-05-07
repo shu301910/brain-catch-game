@@ -1,0 +1,21 @@
+# スコアファイル
+score_solo1.json
+score_solo2.json
+score_duo.json
+scores.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 仮想環境
+venv/
+
+# エディタ
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
