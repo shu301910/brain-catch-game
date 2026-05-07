@@ -1724,18 +1724,15 @@ class Game:
         else:
             screen.fill(BLACK)
 
-        title_panel = pygame.Surface((650, 80), pygame.SRCALPHA)
-        title_panel.fill((0, 0, 0, 160))
-        title_panel_rect = title_panel.get_rect(center=(WIDTH // 2, 100))
-        screen.blit(title_panel, title_panel_rect)
-
-        title = big_font.render("脳トレキャッチゲーム", True, WHITE)
+        # 日本語タイトルは専用フォント（Creepsterは日本語非対応のため）
+        jp_big_font = self.fonts.get("jp_big", big_font)
+        title = jp_big_font.render("脳トレキャッチゲーム", True, WHITE)
         title_rect = title.get_rect(center=(WIDTH // 2, 90))
         screen.blit(title, title_rect)
 
-        sub = small_font.render(
+        sub = font.render(
             "↑↓ to select   ENTER to decide", True, (220, 220, 220))
-        sub_rect = sub.get_rect(center=(WIDTH // 2, 125))
+        sub_rect = sub.get_rect(center=(WIDTH // 2, 135))
         screen.blit(sub, sub_rect)
 
         button_x = WIDTH // 2 - 100
@@ -1782,18 +1779,13 @@ class Game:
         else:
             screen.fill(BLACK)
 
-        title_panel = pygame.Surface((650, 80), pygame.SRCALPHA)
-        title_panel.fill((0, 0, 0, 160))
-        title_panel_rect = title_panel.get_rect(center=(WIDTH // 2, 100))
-        screen.blit(title_panel, title_panel_rect)
-
         title = big_font.render("SELECT MODE", True, WHITE)
         title_rect = title.get_rect(center=(WIDTH // 2, 90))
         screen.blit(title, title_rect)
 
-        sub = small_font.render(
+        sub = font.render(
             "↑↓ to select   ENTER to decide   ( ESC : quit )", True, (220, 220, 220))
-        sub_rect = sub.get_rect(center=(WIDTH // 2, 125))
+        sub_rect = sub.get_rect(center=(WIDTH // 2, 135))
         screen.blit(sub, sub_rect)
 
         descriptions = {
@@ -2002,8 +1994,8 @@ class Game:
             center=(panel_x + panel_w // 2, panel_y + 18))
         screen.blit(title, title_rect)
 
-        item_h    = 32
-        start_y   = panel_y + 38
+        item_h    = 30
+        start_y   = panel_y + 34
         icon_size = 26
 
         for i, monster in enumerate(MONSTER_DEFS):
