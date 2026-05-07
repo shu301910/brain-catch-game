@@ -49,12 +49,16 @@ from config import (
     BOSS_ATTACK_INTERVAL, BOSS_COLOR,
     # 攻撃力アップ（無敵ブロック破壊時）
     ATTACK_BOOST_MULT, ATTACK_BOOST_DURATION,
+    # コンボ
+    COMBO_DAMAGE_STEP, COMBO_DAMAGE_MAX, COMBO_SCORE_PER,
+    COMBO_MIN_DISPLAY, COMBO_PARTICLE_THRESHOLD,
 )
 from entities import (
     Player, Ball, Block, Enemy,
     Projectile, Explosion, WaterfallParticle, LightBeam,
     Star, Planet,
     PlayerBeam, BeamImpactRing,
+    ComboEffect,
 )
 from assets import format_time
 
@@ -264,6 +268,9 @@ class Game:
         # 滝パーティクルリスト
         self.waterfall_particles = []
 
+        # コンボエフェクト（COMBO x N表示・パーティクル）
+        self.combo_effects = []
+
         # 背景：星・惑星（ゲーム起動時に一度だけ生成）
         self.stars = [Star() for _ in range(60)]
         self._init_planets()
@@ -356,6 +363,7 @@ class Game:
         self.projectiles         = []  # 飛んでくる葉っぱなど
         self.explosions          = []  # 爆発エフェクト
         self.waterfall_particles = []  # 滝エフェクト
+        self.combo_effects       = []  # コンボエフェクト
 
         # 金ブロック・プレイヤービーム
         self.gold_spawn_timer  = 0
@@ -572,6 +580,9 @@ class Game:
         ball.register_block_hit(block)
         self._bounce_ball_off_block(ball, block)
 
+        # 当たった時点でコンボカウント（壊れる/壊れないに関わらず）
+        self._register_combo_hit(ball, block)
+
         if ball.color_name == "white":
             block.white_hits += 1
             if block.white_hits >= PURPLE_HITS_SOLO1:
@@ -592,6 +603,10 @@ class Game:
     def _handle_invincible_block(self, ball, block):
         ball.register_block_hit(block)
         self._bounce_ball_off_block(ball, block)
+
+        # 当たった時点でコンボカウント（壊れる/壊れないに関わらず）
+        self._register_combo_hit(ball, block)
+
         block.invincible_hits_left -= 1
         if block.invincible_hits_left <= 0:
             self.blocks.remove(block)
@@ -614,6 +629,10 @@ class Game:
     def _handle_gold_block(self, ball, block):
         ball.register_block_hit(block)
         self._bounce_ball_off_block(ball, block)
+
+        # 当たった時点でコンボカウント（壊れる/壊れないに関わらず）
+        self._register_combo_hit(ball, block)
+
         block.gold_hits_left -= 1
         if block.gold_hits_left <= 0:
             self.blocks.remove(block)
@@ -636,6 +655,41 @@ class Game:
         self._cancel_slow()
         self._cancel_gravity()
 
+    def _register_combo_hit(self, ball, block):
+        """ボールがブロックに『当たった』時に呼ぶ（壊した・壊さなかったに関わらず）。
+        コンボカウントを進め、スコアボーナスと視覚エフェクトを発生させる。
+        ※ダメージ倍率はここでは扱わない（赤・青ブロックを実際に壊した時だけ
+          _get_combo_damage_mult() で別途取得する）"""
+        ball.combo_count += 1
+        combo = ball.combo_count
+
+        # スコアボーナス：combo数 × COMBO_SCORE_PER（1連鎖目はゼロ）
+        if combo >= 2:
+            self.score += combo * COMBO_SCORE_PER
+
+        # 視覚エフェクト：2連鎖以上で「COMBO x N」を表示
+        if combo >= COMBO_MIN_DISPLAY:
+            bx = block.rect.centerx
+            by = block.rect.centery
+            with_particles = combo >= COMBO_PARTICLE_THRESHOLD
+            self.combo_effects.append(
+                ComboEffect(bx, by, combo, with_particles=with_particles))
+
+    def _get_combo_damage_mult(self, ball):
+        """現在のコンボ数から敵への攻撃倍率を取得する。
+        ※赤・青ブロックを壊して敵にダメージを与える時だけ呼ぶ。
+        ※無敵状態（攻撃力アップ）発動中はコンボ倍率を無効化（二重がけ防止）"""
+        # 無敵状態中はコンボ倍率は使わない
+        if self._attack_boosted:
+            return 1.0
+
+        combo = ball.combo_count
+        if combo >= 2:
+            return min(
+                1.0 + (combo - 1) * COMBO_DAMAGE_STEP,
+                COMBO_DAMAGE_MAX)
+        return 1.0
+
     def _handle_normal_block(self, ball, block):
         is_white_match = (ball.color_name == "white"
                           and block.type in ("red", "blue"))
@@ -650,8 +704,14 @@ class Game:
         ball.register_block_hit(block)
         self._bounce_ball_off_block(ball, block)
 
+        # コンボを進める（カウント+1、スコアボーナス、視覚エフェクト）
+        self._register_combo_hit(ball, block)
+        # 倍率を取得（無敵中はコンボ倍率は使わない）
+        combo_mult = self._get_combo_damage_mult(ball)
+
         # 攻撃力アップ中なら倍率を適用
         atk_mult = ATTACK_BOOST_MULT if self._attack_boosted else 1.0
+        atk_mult *= combo_mult  # コンボ倍率も乗算（無敵中は1.0なので影響なし）
 
         # ラスボス戦：どのブロックでもボスにダメージ
         if self.boss_mode and self.boss is not None:
@@ -1317,6 +1377,11 @@ class Game:
 
         for ex in self.explosions:
             ex.draw(screen)
+
+        # コンボエフェクト（COMBO x N表示・パーティクル）
+        combo_font = self.fonts["font"]
+        for ce in self.combo_effects:
+            ce.draw(screen, combo_font)
 
         if self.boss_mode and self.boss is not None:
             self.boss.draw(screen, self.fonts["font"], self.fonts["small"])
@@ -2226,3 +2291,8 @@ class Game:
         for ring in self.beam_impact_rings:
             ring.update(dt)
         self.beam_impact_rings = [r for r in self.beam_impact_rings if not r.done]
+
+        # コンボエフェクトの更新・完了したものを削除
+        for ce in self.combo_effects:
+            ce.update(dt)
+        self.combo_effects = [c for c in self.combo_effects if not c.done]

@@ -23,6 +23,7 @@ from config import (
     LIGHT_BEAM_DURATION, LIGHT_BEAM_WIDTH,
     GOLD_BLOCK_COLOR, GOLD_BLOCK_HITS, GOLD_BLOCK_LIFETIME,  # ← 追加
     PLAYER_BEAM_WIDTH,
+    COMBO_TEXT_DURATION,
 )
 
 
@@ -120,6 +121,9 @@ class Ball:
         # 直前に衝突したブロックのidを記憶して連続ヒットを防ぐ
         self._hit_block_id  = None
         self._hit_cooldown  = 0   # フレーム数カウント
+        # コンボ：バーで跳ね返してから何個ブロックを連続で壊したか
+        # バーに当たるとリセットされる
+        self.combo_count    = 0
 
     def move(self):
         # ブロック衝突クールダウンを毎フレーム減らす
@@ -170,6 +174,8 @@ class Ball:
             self.speed_y = -self.speed
 
         self.y = player.y - BALL_SIZE
+        # コンボ：バーに当たったらリセット
+        self.combo_count = 0
 
     def can_hit_block(self, block):
         """このフレームにそのブロックに当たれるか（連続ヒット防止）"""
@@ -386,6 +392,122 @@ class BeamImpactRing:
         pygame.draw.circle(ring_surf, (*color, alpha),
                            (radius + 2, radius + 2), radius, 2)
         surface.blit(ring_surf, (self.x - radius - 2, self.y - radius - 2))
+
+
+# ============================================================
+# コンボエフェクト
+# ============================================================
+class ComboParticle:
+    """コンボ発生時に飛び散る小さな粒子"""
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+        angle = random.uniform(0, math.pi * 2)
+        speed = random.uniform(2.0, 5.5)
+        self.vx = math.cos(angle) * speed
+        self.vy = math.sin(angle) * speed - 1.5  # わずかに上向きバイアス
+        self.color = color
+        self.life = 600  # ms
+        self.age  = 0
+        self.size = random.randint(2, 4)
+        self.done = False
+
+    def update(self, dt):
+        self.age += dt
+        if self.age >= self.life:
+            self.done = True
+            return
+        # 簡易的な物理：重力＆減衰
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += 0.15  # 重力
+        self.vx *= 0.98  # 摩擦
+
+    def draw(self, surface):
+        ratio = 1.0 - (self.age / self.life)
+        alpha = max(0, int(255 * ratio))
+        size  = max(1, int(self.size * (0.4 + 0.6 * ratio)))
+        surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+        pygame.draw.circle(surf, (*self.color, alpha), (size, size), size)
+        surface.blit(surf, (int(self.x - size), int(self.y - size)))
+
+
+class ComboEffect:
+    """『COMBO x N』のテキスト＋光リング＋パーティクル"""
+    DURATION = COMBO_TEXT_DURATION
+
+    def __init__(self, x, y, combo_count, with_particles=False):
+        self.x = x
+        self.y = y
+        self.combo_count = combo_count
+        self.timer = 0
+        self.done  = False
+        # コンボ数に応じて色を変える（少→白系、多→金〜炎色）
+        if combo_count <= 2:
+            self.color = (255, 255, 200)
+        elif combo_count <= 4:
+            self.color = (255, 220, 80)
+        elif combo_count <= 6:
+            self.color = (255, 160, 60)
+        else:
+            self.color = (255, 80, 80)
+
+        # 派手モード時はパーティクルを散布
+        self.particles = []
+        if with_particles:
+            count = min(8 + combo_count * 2, 30)
+            for _ in range(count):
+                self.particles.append(ComboParticle(x, y, self.color))
+
+    def update(self, dt):
+        self.timer += dt
+        for p in self.particles:
+            p.update(dt)
+        self.particles = [p for p in self.particles if not p.done]
+        if self.timer >= self.DURATION and not self.particles:
+            self.done = True
+
+    def draw(self, surface, font):
+        # パーティクルを先に描画
+        for p in self.particles:
+            p.draw(surface)
+
+        # テキストフェードアウト
+        if self.timer >= self.DURATION:
+            return
+        ratio = self.timer / self.DURATION  # 0→1
+        # 上にゆっくり浮き上がる
+        offset_y = int(-30 * ratio)
+        alpha    = int(255 * (1.0 - ratio))
+        # 大きさが少しずつ縮む
+        scale    = 1.4 - 0.4 * ratio
+
+        text = f"COMBO x{self.combo_count}"
+        text_surf = font.render(text, True, self.color)
+        if scale != 1.0:
+            w, h = text_surf.get_size()
+            text_surf = pygame.transform.smoothscale(
+                text_surf, (max(1, int(w * scale)), max(1, int(h * scale))))
+
+        # アルファ合成
+        text_surf = text_surf.convert_alpha()
+        text_surf.set_alpha(alpha)
+
+        rect = text_surf.get_rect(center=(self.x, self.y + offset_y))
+        surface.blit(text_surf, rect)
+
+        # 光リング（外側に広がる）
+        ring_radius = int(20 + 40 * ratio)
+        ring_alpha  = int(180 * (1.0 - ratio))
+        if ring_radius > 0 and ring_alpha > 0:
+            ring_surf = pygame.Surface(
+                (ring_radius * 2 + 4, ring_radius * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(
+                ring_surf, (*self.color, ring_alpha),
+                (ring_radius + 2, ring_radius + 2), ring_radius, 3)
+            surface.blit(
+                ring_surf,
+                (self.x - ring_radius - 2, self.y + offset_y - ring_radius - 2))
 
 
 # ============================================================

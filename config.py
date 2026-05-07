@@ -200,6 +200,18 @@ MODE_PARAMS = {
 PURPLE_HITS_SOLO1 = 2
 
 # =========================
+# コンボ設定
+# =========================
+# コンボ：バーで跳ね返ったボールが連続でブロックを破壊するごとにカウントアップ。
+# バーに当たるとリセット。
+COMBO_DAMAGE_STEP   = 0.2   # コンボ1段ごとの追加ダメージ倍率（2連鎖で+0.2＝×1.2）
+COMBO_DAMAGE_MAX    = 2.5   # ダメージ倍率の上限
+COMBO_SCORE_PER     = 5     # スコアボーナス：combo数 × COMBO_SCORE_PER
+COMBO_MIN_DISPLAY   = 3     # この連鎖数以上で「COMBO」表示エフェクトを出す
+COMBO_PARTICLE_THRESHOLD = 4   # この連鎖数以上で派手なパーティクルを出す
+COMBO_TEXT_DURATION = 800   # 「COMBO x N」テキストが表示される時間（ms）
+
+# =========================
 # 2体モード設定
 # =========================
 DUAL_ENEMY_TRIGGER = 5   # 何体倒したら2体モードになるか
