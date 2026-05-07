@@ -856,6 +856,39 @@ class Game:
                         self.beam_impact_rings.append(BeamImpactRing(bx, by, color))
                     if beam.hit_timers[block_id] >= PLAYER_BEAM_HIT_TIME:
                         self.blocks.remove(block)
+                        # ビーム発射プレイヤーの色を「攻撃属性」として使用
+                        # （白ビームはどちらの色のブロックにも有効）
+                        atk_mult = ATTACK_BOOST_MULT if self._attack_boosted else 1.0
+
+                        if block.type == "purple":
+                            # 紫ブロック → HP回復
+                            self.player_hp = min(
+                                PLAYER_MAX_HP,
+                                self.player_hp + HEAL_AMOUNT)
+                        else:
+                            # 赤・青ブロック → 敵にダメージ
+                            # 攻撃属性はブロックの色に対応（赤ブロック→赤攻撃、青ブロック→青攻撃）
+                            attack_color = block.type  # "red" or "blue"
+
+                            if self.boss_mode and self.boss is not None:
+                                self.boss.take_damage(attack_color, atk_mult)
+                                if self.boss.is_dead():
+                                    self._start_ending()
+                            elif self.dual_mode and self.enemy_right is not None:
+                                # 2体モード時：赤ブロックは右の敵、青ブロックは左の敵を攻撃
+                                if block.type == "red":
+                                    target = self.enemy_right
+                                    target_side = "right"
+                                else:
+                                    target = self.enemy
+                                    target_side = "left"
+                                target.take_damage(attack_color, atk_mult)
+                                if target.is_dead():
+                                    self._on_enemy_defeated(target, target_side)
+                            elif self.enemy is not None:
+                                self.enemy.take_damage(attack_color, atk_mult)
+                                if self.enemy.is_dead():
+                                    self._on_enemy_defeated(self.enemy, "single")
 
                 elif block.type == "invincible":
                     # 2秒（2000ms）当たり続けると1回分カウント
