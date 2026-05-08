@@ -11,7 +11,8 @@ import pygame
 from config import WIDTH, HEIGHT, FPS
 from assets import load_all_images
 from score_manager import ScoreManager
-from game import Game
+from menu import MenuScreen
+from catch_game import Game
 
 
 def find_japanese_font():
@@ -93,38 +94,58 @@ def main():
     images = load_all_images()
     score_manager = ScoreManager()
 
-    # ゲームインスタンス作成
+    # メニュー画面とゲーム本体のインスタンスを作成
+    menu = MenuScreen(screen, fonts, images, score_manager)
     game = Game(screen, fonts, images, score_manager)
+
+    # アプリ全体の状態：「メニュー画面中」か「プレイ中」のどちらか
+    # "menu" = メニュー/モード選択/ランキング画面（menu.pyが描画）
+    # "play" = ゲームプレイ/ゲームオーバー/エンディング（catch_game.pyが描画）
+    app_state = "menu"
 
     # メインループ
     while True:
         dt = clock.get_time()
 
-        # イベント処理
+        # イベント処理：app_stateに応じて適切な画面に渡す
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
-                game.handle_click(event.pos)
+                if app_state == "menu":
+                    menu.handle_click(event.pos)
+                else:
+                    game.handle_click(event.pos)
             if event.type == pygame.KEYDOWN:
-                game.handle_keydown(event.key)
+                if app_state == "menu":
+                    menu.handle_keydown(event.key)
+                else:
+                    game.handle_keydown(event.key)
 
-        # 状態に応じて更新＆描画
-        if game.state == "menu":
-            game.draw_menu()
-        elif game.state == "mode_select":
-            game.draw_mode_select()
-        elif game.state == "play":
+        # 状態に応じた更新＆描画
+        if app_state == "menu":
+            menu.draw()
+            # メニューでモードが選ばれたらゲーム開始
+            if menu.is_play_requested():
+                mode = menu.consume_play_request()
+                game.start(mode)
+                app_state = "play"
+
+        else:  # app_state == "play"
             keys = pygame.key.get_pressed()
-            game.update_play(dt, keys)
-            game.draw_play()
-        elif game.state == "ranking":
-            game.draw_ranking()
-        elif game.state == "gameover":
-            game.draw_gameover()
-        elif game.state == "ending":
-            game.draw_ending(dt)
+            if game.state == "play":
+                game.update_play(dt, keys)
+                game.draw_play()
+            elif game.state == "gameover":
+                game.draw_gameover()
+            elif game.state == "ending":
+                game.draw_ending(dt)
+
+            # ゲーム終了 → メニューへ戻る
+            if game.is_finished():
+                app_state = "menu"
+                menu.reset_to_menu()
 
         pygame.display.update()
         clock.tick(FPS)
