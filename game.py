@@ -1576,7 +1576,7 @@ class Game:
 
         bar_x = BOSS_X
         bar_y = BOSS_Y + BOSS_H + 10
-        bar_w = BOSS_W
+        bar_w = SIDE_WIDTH - 20   # サイドバー内に収める（390→380）
         bar_h = 14
         gap   = 6
 
@@ -1609,8 +1609,9 @@ class Game:
                 pygame.draw.rect(screen, phase_colors[i],
                                  (bar_x, by, int(bar_w * fill), bar_h),
                                  border_radius=3)
-            label = small_font.render(f"HP {BOSS_HP_BARS - i}", True, phase_colors[i])
-            screen.blit(label, (bar_x + bar_w + 6, by))
+            # ラベルはバー左端の内側に白文字で配置（はみ出し防止）
+            label = small_font.render(f"HP {BOSS_HP_BARS - i}", True, WHITE)
+            screen.blit(label, (bar_x + 6, by - 2))
 
         total_text = small_font.render(
             f"{boss.hp} / {boss.max_hp}", True, WHITE)
