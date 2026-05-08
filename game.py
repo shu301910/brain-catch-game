@@ -820,8 +820,12 @@ class Game:
                 self.bg_mode = "space"
 
     def _projectile_count(self):
-        """モードに応じた落下物の本数を返す。1P=3本、2P=2本"""
-        return 2 if self.mode == MODE_DUO else 3
+        """緑色モンスターの葉っぱの本数（毎回 3〜5 枚のランダム）"""
+        return random.randint(3, 5)
+
+    def _yellow_beam_count(self):
+        """黄色モンスターの光ビーム本数（毎回 2〜3 本のランダム）"""
+        return random.randint(2, 3)
 
     def _spawn_projectile(self, proj_type, count=1):
         for _ in range(count):
@@ -1018,7 +1022,7 @@ class Game:
             # 演出は常に出す
             self.yellow_flash_timer  = YELLOW_FLASH_DURATION
             self.yellow_beam_pending = YELLOW_BEAM_PENDING
-            self.yellow_beam_count   = n
+            self.yellow_beam_count   = self._yellow_beam_count()  # 毎回 2〜3 本ランダム
             # 効果（染色）は無敵中はスキップ
             if not invincible:
                 self.dye_timer = YELLOW_DYE_DURATION

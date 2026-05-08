@@ -123,10 +123,10 @@ YELLOW_FLASH_DURATION    = 400   # 予告フラッシュの長さ（ms）
 YELLOW_BEAM_PENDING      = 1000  # 予告から発動までの時間（ms）
 LIGHT_BEAM_DURATION      = 600   # ビームが表示される時間（ms）
 LIGHT_BEAM_WIDTH         = 18    # ビームの幅（px）
-LIGHT_BEAM_DAMAGE        = 25    # バーに当たった時のダメージ
+LIGHT_BEAM_DAMAGE        = 35    # バーに当たった時のダメージ
 
 # 落下物（葉っぱ・光の矢）の設定
-PROJECTILE_SPEED   = 4      # 落下速度（px/frame）
+PROJECTILE_SPEED   = 4.5      # 落下速度（px/frame）
 PROJECTILE_DAMAGE  = 20     # バーに当たった時のダメージ
 PROJECTILE_WIDTH   = 20
 PROJECTILE_HEIGHT  = 20
@@ -137,8 +137,8 @@ RED_SPEED_BOOST_MULT     = 1.8   # 速度倍率
 RED_SPEED_BOOST_DURATION = 4000  # 持続ミリ秒
 
 # 黒モンスター特殊攻撃（バー速度DOWN）
-DARK_SLOW_MULT     = 0.55   # 速度倍率（通常の55%）：少し緩和
-DARK_SLOW_DURATION = 5000   # 持続ミリ秒（1秒延長）
+DARK_SLOW_MULT     = 0.4   # 速度倍率（通常の55%）：少し緩和
+DARK_SLOW_DURATION = 6000   # 持続ミリ秒（1秒延長）
 
 # 緑モンスター逆転演出：画面フラッシュの持続時間
 INVERT_FLASH_DURATION = 400  # ミリ秒
