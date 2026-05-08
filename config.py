@@ -123,7 +123,7 @@ YELLOW_FLASH_DURATION    = 400   # 予告フラッシュの長さ（ms）
 YELLOW_BEAM_PENDING      = 1000  # 予告から発動までの時間（ms）
 LIGHT_BEAM_DURATION      = 600   # ビームが表示される時間（ms）
 LIGHT_BEAM_WIDTH         = 18    # ビームの幅（px）
-LIGHT_BEAM_DAMAGE        = 35    # バーに当たった時のダメージ
+LIGHT_BEAM_DAMAGE        = 30    # バーに当たった時のダメージ
 
 # 落下物（葉っぱ・光の矢）の設定
 PROJECTILE_SPEED   = 4.5      # 落下速度（px/frame）
@@ -137,7 +137,7 @@ RED_SPEED_BOOST_MULT     = 1.8   # 速度倍率
 RED_SPEED_BOOST_DURATION = 4000  # 持続ミリ秒
 
 # 黒モンスター特殊攻撃（バー速度DOWN）
-DARK_SLOW_MULT     = 0.4   # 速度倍率（通常の55%）：少し緩和
+DARK_SLOW_MULT     = 0.5   # 速度倍率（通常の55%）：少し緩和
 DARK_SLOW_DURATION = 6000   # 持続ミリ秒（1秒延長）
 
 # 緑モンスター逆転演出：画面フラッシュの持続時間
@@ -174,12 +174,14 @@ GAMEOVER_SHOW_TOP = 3    # ゲームオーバー時はトップ3を表示
 MODE_SOLO1 = "solo1"  # 一人用：バー１個・ボール１個（白）
 MODE_SOLO2 = "solo2"  # 一人用：バー２個・ボール２個
 MODE_DUO   = "duo"    # 二人用：バー２個・ボール２個
+MODE_COSMIC = "cosmic"  # コズミックモード：宇宙空間でブロックを壊すスコアアタック
 
 # モード別のスコアファイル（solo1とsolo2を別ファイルに修正）
 MODE_SCORE_FILES = {
     MODE_SOLO1: "score_solo1.json",
     MODE_SOLO2: "score_solo2.json",
     MODE_DUO:   "score_duo.json",
+    MODE_COSMIC: "score_cosmic.json",
 }
 
 # モード別の表示ラベル
@@ -187,6 +189,7 @@ MODE_LABELS = {
     MODE_SOLO1: "1P( 1 BAR)",
     MODE_SOLO2: "1P( 2 BAR 2 Ball)",
     MODE_DUO:   "2P",
+    MODE_COSMIC: "COSMIC",
 }
 
 # モード別パラメーター
@@ -194,6 +197,7 @@ MODE_PARAMS = {
     MODE_SOLO1: {"speed_up_mult": 1.0, "damage_mult": 1.0},
     MODE_SOLO2: {"speed_up_mult": 0.6, "damage_mult": 0.7},
     MODE_DUO:   {"speed_up_mult": 1.2, "damage_mult": 1.0},
+    MODE_COSMIC: {"speed_up_mult": 1.0, "damage_mult": 1.0},
 }
 
 # 紫ブロックを白ボール（ソロ1モード）で何回当てたら割れるか
