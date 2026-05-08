@@ -197,11 +197,13 @@ class Ball:
     def is_fallen(self):
         return self.y > HEIGHT
 
-    def draw(self, surface):
+    def draw(self, surface, override_color=None):
         center_x = int(self.x + BALL_SIZE / 2)
         center_y = int(self.y + BALL_SIZE / 2)
         radius   = BALL_SIZE // 2
-        pygame.draw.circle(surface, self.color, (center_x, center_y), radius)
+        # override_colorが指定されていればその色で描画（点滅エフェクト用）
+        color = override_color if override_color is not None else self.color
+        pygame.draw.circle(surface, color, (center_x, center_y), radius)
 
     @property
     def rect(self):

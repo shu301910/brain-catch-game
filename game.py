@@ -820,8 +820,8 @@ class Game:
                 self.bg_mode = "space"
 
     def _projectile_count(self):
-        """緑色モンスターの葉っぱの本数（毎回 3〜5 枚のランダム）"""
-        return random.randint(3, 5)
+        """モードに応じた落下物（緑の葉っぱ）の本数を返す。1P=3本、2P=2本"""
+        return 2 if self.mode == MODE_DUO else 3
 
     def _yellow_beam_count(self):
         """黄色モンスターの光ビーム本数（毎回 2〜3 本のランダム）"""
@@ -1377,7 +1377,14 @@ class Game:
             # ビーム発射中はそのボールを非表示
             if self.beam_active.get(ball.color_name):
                 continue
-            ball.draw(screen)
+            # 黒モンスターの特殊攻撃中はボールを「元の色 ↔ 黒」で点滅
+            override_color = None
+            if self.slow_timer > 0:
+                # 周期350ms（1秒に≒2.85回点滅）の後半は黒色で描画
+                period = 350
+                if (self.elapsed_time % period) >= period // 2:
+                    override_color = BLACK
+            ball.draw(screen, override_color=override_color)
 
         for ex in self.explosions:
             ex.draw(screen)
