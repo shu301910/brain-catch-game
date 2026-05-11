@@ -8,11 +8,12 @@ import os
 import sys
 import pygame
 
-from config import WIDTH, HEIGHT, FPS
+from config import WIDTH, HEIGHT, FPS, MODE_COSMIC
 from assets import load_all_images
 from score_manager import ScoreManager
 from menu import MenuScreen
-from catch_game import Game
+from catch_game import Game as CatchGame
+from cosmic_game import CosmicGame
 
 
 def find_japanese_font():
@@ -96,7 +97,11 @@ def main():
 
     # メニュー画面とゲーム本体のインスタンスを作成
     menu = MenuScreen(screen, fonts, images, score_manager)
-    game = Game(screen, fonts, images, score_manager)
+    catch_game = CatchGame(screen, fonts, images, score_manager)
+    cosmic_game = CosmicGame(screen, fonts, images, score_manager)
+
+    # 現在プレイ中のゲームを指す変数（startすると差し替わる）
+    current_game = None
 
     # アプリ全体の状態：「メニュー画面中」か「プレイ中」のどちらか
     # "menu" = メニュー/モード選択/ランキング画面（menu.pyが描画）
@@ -115,13 +120,13 @@ def main():
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if app_state == "menu":
                     menu.handle_click(event.pos)
-                else:
-                    game.handle_click(event.pos)
+                elif current_game is not None:
+                    current_game.handle_click(event.pos)
             if event.type == pygame.KEYDOWN:
                 if app_state == "menu":
                     menu.handle_keydown(event.key)
-                else:
-                    game.handle_keydown(event.key)
+                elif current_game is not None:
+                    current_game.handle_keydown(event.key)
 
         # 状態に応じた更新＆描画
         if app_state == "menu":
@@ -129,23 +134,29 @@ def main():
             # メニューでモードが選ばれたらゲーム開始
             if menu.is_play_requested():
                 mode = menu.consume_play_request()
-                game.start(mode)
+                # 選ばれたモードに応じて適切なゲームを起動
+                if mode == MODE_COSMIC:
+                    current_game = cosmic_game
+                else:
+                    current_game = catch_game
+                current_game.start(mode)
                 app_state = "play"
 
         else:  # app_state == "play"
             keys = pygame.key.get_pressed()
-            if game.state == "play":
-                game.update_play(dt, keys)
-                game.draw_play()
-            elif game.state == "gameover":
-                game.draw_gameover()
-            elif game.state == "ending":
-                game.draw_ending(dt)
+            if current_game.state == "play":
+                current_game.update_play(dt, keys)
+                current_game.draw_play()
+            elif current_game.state == "gameover":
+                current_game.draw_gameover()
+            elif current_game.state == "ending":
+                current_game.draw_ending(dt)
 
             # ゲーム終了 → メニューへ戻る
-            if game.is_finished():
+            if current_game.is_finished():
                 app_state = "menu"
                 menu.reset_to_menu()
+                current_game = None
 
         pygame.display.update()
         clock.tick(FPS)

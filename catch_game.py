@@ -426,9 +426,18 @@ class Game:
                 Player(PLAY_LEFT + 500, PLAY_TOP + PLAY_HEIGHT - 50,
                        BLUE, "blue", pygame.K_LEFT, pygame.K_RIGHT),
             ]
+            # 赤のスピードアップ倍率は青の0.7倍に抑える
+            red_speed_up_mult = 1.0 + (speed_up_mult - 1.0) * 0.7
+
             self.balls = [
-                Ball("red",  RED,  speed_up_mult=speed_up_mult),
-                Ball("blue", BLUE, speed_up_mult=speed_up_mult),
+                Ball("red",  RED,
+                     speed_up_mult=red_speed_up_mult,
+                     start_x=PLAY_LEFT + 100,   # 赤プレイヤーの真上＝左側
+                     straight=True),             # まっすぐ真下に落下
+                Ball("blue", BLUE,
+                     speed_up_mult=speed_up_mult,
+                     start_x=PLAY_LEFT + 500,   # 青プレイヤーの真上＝右側
+                     straight=True),             # まっすぐ真下に落下
             ]
 
         # ゲームスタートのたびに惑星をランダムで選び直す

@@ -8,7 +8,7 @@ import pygame
 from config import (
     WIDTH, HEIGHT, PLAY_LEFT,
     BLACK, WHITE, GRAY, GOLD,
-    MODE_SOLO1, MODE_SOLO2, MODE_DUO,
+    MODE_SOLO1, MODE_SOLO2, MODE_DUO, MODE_COSMIC,
     MODE_LABELS,
 )
 from assets import format_time
@@ -30,7 +30,7 @@ class MenuScreen:
         self.state = "menu"
 
         # 選択肢
-        self.mode_options = [MODE_SOLO1, MODE_SOLO2, MODE_DUO]
+        self.mode_options = [MODE_SOLO1, MODE_SOLO2, MODE_DUO, MODE_COSMIC]
         self.ranking_mode = MODE_DUO   # ランキング画面で表示しているモード
 
         # カーソル位置
@@ -152,6 +152,7 @@ class MenuScreen:
             MODE_SOLO1: "1 bar / 1 white ball",
             MODE_SOLO2: "2 bars / 2 balls (easier)",
             MODE_DUO:   "2 bars / 2 balls (2 players)",
+            MODE_COSMIC: "Cosmic score attack mode",
         }
 
         for i, (mode, rect) in enumerate(self._mode_button_rects()):
@@ -180,7 +181,7 @@ class MenuScreen:
 
         screen.fill((10, 10, 25))
 
-        tab_w  = 200
+        tab_w  = 160
         tab_h  = 40
         tab_y  = 10
         tab_gap = 10
@@ -203,7 +204,7 @@ class MenuScreen:
             screen.blit(label_text, label_rect)
 
         hint = self.fonts["mini"].render(
-            "< / > or 1/2/3 to switch mode", True, GRAY)
+            "< / > or 1/2/3/4 to switch mode", True, GRAY)
         hint_rect = hint.get_rect(center=(WIDTH // 2, 62))
         screen.blit(hint, hint_rect)
 
@@ -354,6 +355,8 @@ class MenuScreen:
                 self.selected_mode = self.mode_options[1]
             elif key == pygame.K_3:
                 self.selected_mode = self.mode_options[2]
+            elif key == pygame.K_4:
+                self.selected_mode = self.mode_options[3]
             elif key == pygame.K_BACKSPACE:
                 self.state = "menu"
 
@@ -370,6 +373,8 @@ class MenuScreen:
                 self.ranking_mode = self.mode_options[1]
             elif key == pygame.K_3:
                 self.ranking_mode = self.mode_options[2]
+            elif key == pygame.K_4:
+                self.selected_mode = self.mode_options[3]
 
     def _cycle_ranking_mode(self, delta):
         idx = self.mode_options.index(self.ranking_mode)

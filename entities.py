@@ -102,22 +102,39 @@ class Player:
 # ============================================================
 class Ball:
     def __init__(self, color_name, color, speed_up_mult=1.0,
-                 initial_speed=None):
+                 initial_speed=None,
+                 start_x=None, straight=False):
         self.color_name    = color_name
         self.color         = color
         self.speed_up_mult = speed_up_mult
         self._initial_speed = initial_speed if initial_speed else INITIAL_BALL_SPEED
+        # 初期位置と落下方向の指定（reset時に参照される）
+        self._start_x       = start_x       # None ならランダム
+        self._straight      = straight      # True なら真下に落とす
         # 青モンスター特殊攻撃（下降時だけ速くなる）
         self.gravity_mode  = False
         self.reset()
 
     def reset(self):
-        self.x = random.randint(PLAY_LEFT, WIDTH - BALL_SIZE)
+        # 初期位置：start_x が指定されていればプレイヤーの真上、なければランダム
+        if self._start_x is not None:
+            self.x = max(PLAY_LEFT,
+                         min(WIDTH - BALL_SIZE,
+                             self._start_x + (PLAYER_WIDTH - BALL_SIZE) // 2))
+        else:
+            self.x = random.randint(PLAY_LEFT, WIDTH - BALL_SIZE)
         self.y = PLAY_TOP + 50
-        self.speed   = self._initial_speed
-        angle = math.radians(random.randint(30, 150))
-        self.speed_x = self.speed * math.cos(angle)
-        self.speed_y = self.speed * math.sin(angle)
+        self.speed = self._initial_speed
+
+        # 初期速度の方向：straight ならまっすぐ真下、それ以外はランダム角度
+        if self._straight:
+            self.speed_x = 0
+            self.speed_y = self.speed
+        else:
+            angle = math.radians(random.randint(30, 150))
+            self.speed_x = self.speed * math.cos(angle)
+            self.speed_y = self.speed * math.sin(angle)
+
         # 直前に衝突したブロックのidを記憶して連続ヒットを防ぐ
         self._hit_block_id  = None
         self._hit_cooldown  = 0   # フレーム数カウント
