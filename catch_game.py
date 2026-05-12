@@ -196,6 +196,7 @@ class Game:
 
         # スタート待機フラグ（SPACE待ち）
         self.waiting_start    = False
+        self.countdown_timer = 0
 
         self.score       = 0
         self.score_timer = 0
@@ -343,6 +344,7 @@ class Game:
 
         # ゲーム開始待ちフラグ
         self.waiting_start = True
+        self.countdown_timer = 0
 
         # 黄色モンスター：ボールの色を染める効果
         self.dye_timer    = 0
@@ -427,17 +429,11 @@ class Game:
                        BLUE, "blue", pygame.K_LEFT, pygame.K_RIGHT),
             ]
             # 赤のスピードアップ倍率は青の0.7倍に抑える
-            red_speed_up_mult = 1.0 + (speed_up_mult - 1.0) * 0.7
+            red_speed_up_mult = 1.0 + (speed_up_mult - 1.0) * 0.5
 
             self.balls = [
-                Ball("red",  RED,
-                     speed_up_mult=red_speed_up_mult,
-                     start_x=PLAY_LEFT + 100,   # 赤プレイヤーの真上＝左側
-                     straight=True),             # まっすぐ真下に落下
-                Ball("blue", BLUE,
-                     speed_up_mult=speed_up_mult,
-                     start_x=PLAY_LEFT + 500,   # 青プレイヤーの真上＝右側
-                     straight=True),             # まっすぐ真下に落下
+                Ball("red",  RED,  speed_up_mult=speed_up_mult),
+                Ball("blue", BLUE, speed_up_mult=speed_up_mult),
             ]
 
         # ゲームスタートのたびに惑星をランダムで選び直す
@@ -1500,6 +1496,32 @@ class Game:
                                               PLAY_TOP + PLAY_HEIGHT // 2 + 60))
             screen.blit(msg3, msg3_rect)
 
+        # カウントダウン表示（3, 2, 1）
+        if self.countdown_timer > 0 and not self.waiting_start:
+            overlay = pygame.Surface((PLAY_WIDTH, PLAY_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 120))
+            screen.blit(overlay, (PLAY_LEFT, PLAY_TOP))
+
+            # 3 → 2 → 1 の数字
+            count_num = int(self.countdown_timer // 1000) + 1
+            if count_num > 3:
+                count_num = 3
+
+            # 1秒ごとに拡大→縮小するアニメーション
+            progress = (self.countdown_timer % 1000) / 1000.0  # 1.0 → 0.0
+            scale = 1.0 + progress * 1.5   # 大きい状態から縮んでくる
+            alpha = int(255 * (0.3 + 0.7 * progress))  # だんだん薄く
+
+            big_font = self.fonts["big"]
+            num_surf = big_font.render(str(count_num), True, (255, 230, 80))
+            w, h = num_surf.get_size()
+            scaled = pygame.transform.smoothscale(
+                num_surf, (int(w * scale), int(h * scale)))
+            scaled.set_alpha(alpha)
+            rect = scaled.get_rect(center=(PLAY_LEFT + PLAY_WIDTH // 2,
+                                        PLAY_TOP + PLAY_HEIGHT // 2))
+            screen.blit(scaled, rect)
+
         # 境界線は全ての描画が終わった最後に上書きで引く（何にも消されない）
         pygame.draw.line(screen, WHITE, (PLAY_LEFT, 0), (PLAY_LEFT, HEIGHT), 2)
         pygame.draw.line(screen, WHITE,
@@ -1966,6 +1988,11 @@ class Game:
         if key == pygame.K_ESCAPE:
             pygame.event.post(pygame.event.Event(pygame.QUIT))
             return
+        elif self.state == "play":
+            if self.waiting_start:
+                if key in (pygame.K_SPACE, pygame.K_RETURN):
+                    self.waiting_start = False
+                    self.countdown_timer = 3000   # ← 3秒(3000ms)スタート
 
         if self.state == "play":
             if self.waiting_start:
@@ -1985,6 +2012,15 @@ class Game:
     # ============================================
     def update_play(self, dt, keys):
         if self.waiting_start:
+            for star in self.stars:
+                star.update()
+            for planet in self.planets:
+                planet.update()
+            return
+        
+        # ↓ カウントダウン中もボールやプレイヤーは動かさない
+        if self.countdown_timer > 0:
+            self.countdown_timer = max(0, self.countdown_timer - dt)
             for star in self.stars:
                 star.update()
             for planet in self.planets:
