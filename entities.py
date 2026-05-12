@@ -1029,3 +1029,104 @@ class Planet:
             pygame.draw.ellipse(rs, (*self.ring_color, max(0, self.alpha - 10)),
                                 (rcx - r * 2, rcy - r // 3, r * 4, r * 2 // 3), 4)
             surface.blit(rs, (cx - r * 2, cy - r))
+
+# ============================================================
+# ビリビリ電撃エフェクトクラス（黄色稲妻被弾時）
+# ============================================================
+class ShockEffect:
+    """プレイヤーにつくびりびり電撃エフェクト。
+    どのバーが黄色の稲妻に被弾したか一目でわかるように、
+    バーの周りに黄色いオーラとジグザグのスパークをチカチカ表示する。"""
+
+    def __init__(self, player, duration=800):
+        self.player    = player          #追従対象のプレイヤー
+        self.duration  = duration        # エフェクト時間(ms)
+        self.elapsed   = 0
+        self.done      = False
+        self.sparks    = []              # スパーク粒子リスト
+        self._spark_timer = 0            # スパーク再生成タイマー
+        self._spawn_sparks()
+
+    def _spawn_sparks(self):
+        """バーの周囲にランダムのスパークを生成"""
+        self.sparks = []
+        rect = self.player.rect
+        for _ in range(14):
+            edge = random.choice(["top", "bottom", "left", "right"])
+            if edge == "top":
+                x = random.randint(rect.left, rect.right)
+                y = rect.top
+            elif edge == "bottom":
+                x = random.randint(rect.left, rect.right)
+                y = rect.bottom
+            elif edge == "left":
+                x = rect.left
+                y = random.randint(rect.top, rect.bottom)
+            else:
+                x = rect.right
+                y = random.randint(rect.top, rect.bottom)
+            self.sparks.append({
+                "x":     x,
+                "y":     y,
+                "len":   random.randint(8, 22),
+                "angle": random.uniform(0, math.pi * 2),
+            })
+
+    def update(self, dt):
+        self.elapsed += dt
+        if self.elapsed >= self.duration:
+            self.done = True
+            return
+        # 一定間隔でスパークを再生成（チカチカ感）
+        self._spark_timer += dt
+        if self._spark_timer >= 80:
+            self._spark_timer = 0
+            self._spawn_sparks()
+
+    def draw(self, surface):
+        if self.done:
+            return
+        rect  = self.player.rect
+        ratio = 1.0 - (self.elapsed / self.duration)
+        alpha = int(255 * ratio)
+
+        try:
+            # 1. バー周囲の黄色いオーラ
+            glow_pad = 8
+            glow = pygame.Surface(
+                (rect.width + glow_pad * 2, rect.height + glow_pad * 2),
+                pygame.SRCALPHA)
+            pygame.draw.rect(glow, (255, 230, 80, int(80 * ratio)),
+                             glow.get_rect(), border_radius=6)
+            surface.blit(glow, (rect.left - glow_pad, rect.top - glow_pad))
+
+            # 2. バーの輪郭をビリビリ光らせる
+            outline = pygame.Surface(
+                (rect.width + 4, rect.height + 4), pygame.SRCALPHA)
+            pygame.draw.rect(outline, (255, 255, 100, alpha),
+                             outline.get_rect(), 3, border_radius=4)
+            surface.blit(outline, (rect.left - 2, rect.top - 2))
+
+            # 3. スパーク（ジグザグの稲妻線）
+            for sp in self.sparks:
+                x1, y1 = sp["x"], sp["y"]
+                length = sp["len"]
+                ang    = sp["angle"]
+                # ジグザグに分割
+                segments = 3
+                points = [(x1, y1)]
+                for i in range(1, segments + 1):
+                    t  = i / segments
+                    ex = x1 + math.cos(ang) * length * t
+                    ey = y1 + math.sin(ang) * length * t
+                    # 横方向にランダムでブレさせる
+                    ex += random.uniform(-3, 3)
+                    ey += random.uniform(-3, 3)
+                    points.append((ex, ey))
+                pygame.draw.lines(surface, (255, 255, 150),
+                                  False, points, 2)
+                # 白い芯
+                pygame.draw.lines(surface, (255, 255, 255),
+                                  False, points, 1)
+        except Exception:
+            pass

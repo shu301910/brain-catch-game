@@ -61,6 +61,7 @@ from entities import (
     Star, Planet,
     PlayerBeam, BeamImpactRing,
     ComboEffect,
+    ShockEffect,
 )
 from assets import format_time
 
@@ -274,6 +275,9 @@ class Game:
         # コンボエフェクト（COMBO x N表示・パーティクル）
         self.combo_effects = []
 
+        # ビリビリエフェクト（黄色稲妻被弾時のバー演出）
+        self.shock_effects = []
+
         # 背景：星・惑星（ゲーム起動時に一度だけ生成）
         self.stars = [Star() for _ in range(60)]
         self._init_planets()
@@ -382,6 +386,7 @@ class Game:
         self.explosions          = []  # 爆発エフェクト
         self.waterfall_particles = []  # 滝エフェクト
         self.combo_effects       = []  # コンボエフェクト
+        self.shock_effects       = []  # ビリビリエフェクト
 
         # 金ブロック・プレイヤービーム
         self.gold_spawn_timer  = 0
@@ -1180,6 +1185,8 @@ class Game:
                     if beam.rect.colliderect(player.rect):
                         self.player_hp = max(0,
                             self.player_hp - LIGHT_BEAM_DAMAGE)
+                        # ビリビリエフェクトを発生（どのバーが当たったか可視化）
+                        self.shock_effects.append(ShockEffect(player))
                         beam.active = False
                         self.light_beams.remove(beam)
                         break
@@ -1219,6 +1226,11 @@ class Game:
             if not ex.active:
                 self.explosions.remove(ex)
 
+        # ビリビリエフェクトの更新・完了したものを削除
+        for se in self.shock_effects:
+            se.update(dt)
+        self.shock_effects = [s for s in self.shock_effects if not s.done]
+
         for star in self.stars:
             star.update()
         for planet in self.planets:
@@ -1229,6 +1241,10 @@ class Game:
         self._cancel_speed_boost()
         self._cancel_slow()
         self._cancel_gravity()
+
+        # ボス撃破のボーナス
+        self.score += 1000
+
         total_defeated = sum(self.defeated_count.values())
         self.score_manager.add_score(
             self.mode, self.score, self.elapsed_time, total_defeated)
@@ -1393,6 +1409,10 @@ class Game:
             p.draw(screen)
 
         self._draw_players(screen)
+
+        # ビリビリエフェクトをプレイヤーの上に重ねて描画
+        for se in self.shock_effects:
+            se.draw(screen)
 
         for ball in self.balls:
             # ビーム発射中はそのボールを非表示
@@ -1988,16 +2008,12 @@ class Game:
         if key == pygame.K_ESCAPE:
             pygame.event.post(pygame.event.Event(pygame.QUIT))
             return
-        elif self.state == "play":
-            if self.waiting_start:
-                if key in (pygame.K_SPACE, pygame.K_RETURN):
-                    self.waiting_start = False
-                    self.countdown_timer = 3000   # ← 3秒(3000ms)スタート
 
         if self.state == "play":
             if self.waiting_start:
                 if key in (pygame.K_SPACE, pygame.K_RETURN):
                     self.waiting_start = False
+                    self.countdown_timer = 3000   # 3秒(3000ms)カウントダウン
 
         elif self.state == "gameover":
             if key == pygame.K_RETURN:
