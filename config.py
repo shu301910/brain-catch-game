@@ -196,7 +196,7 @@ MODE_LABELS = {
 MODE_PARAMS = {
     MODE_SOLO1: {"speed_up_mult": 1.0, "damage_mult": 1.0},
     MODE_SOLO2: {"speed_up_mult": 0.6, "damage_mult": 0.7},
-    MODE_DUO:   {"speed_up_mult": 1.2, "damage_mult": 1.0},
+    MODE_DUO:   {"speed_up_mult": 1.5, "damage_mult": 1.0},
     MODE_COSMIC: {"speed_up_mult": 1.0, "damage_mult": 1.0},
 }
 
