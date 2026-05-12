@@ -437,7 +437,7 @@ class Game:
             red_speed_up_mult = 1.0 + (speed_up_mult - 1.0) * 0.5
 
             self.balls = [
-                Ball("red",  RED,  speed_up_mult=speed_up_mult),
+                Ball("red",  RED,  speed_up_mult=red_speed_up_mult),
                 Ball("blue", BLUE, speed_up_mult=speed_up_mult),
             ]
 
