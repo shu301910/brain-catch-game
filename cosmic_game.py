@@ -150,12 +150,15 @@ MAX_STOCKS              = 3
 RED_BOMB_FUSE_MS    = 1000           # 1秒で爆発
 RED_BOMB_RADIUS     = 100             # 爆発半径
 RED_BOMB_SPEED      = 6              # 投擲初速
+RED_BOMB_TRAIL_INTERVAL  = 25        # 軌跡の火花を出す間隔（ms）
+RED_BOMB_TRAIL_LIFE      = 700       # 火花の寿命（ms）長めにして軌跡として残す
+RED_BOMB_TRAIL_HIT_RADIUS = 18       # 軌跡の火花がブロックを壊す半径
 RED_SPEED_MULT      = 1.5            # 移動速度UP（ストックがあるあいだ）
 # 赤：爆竹（プレイヤー周囲の連続爆発）
 RED_FIRECRACKER_DURATION = 2000      # 持続時間（ms）
 RED_FIRECRACKER_RADIUS   = 100        # 各小爆発が当たる範囲（プレイヤー中心）
-RED_FIRECRACKER_INTERVAL = 55        # 小爆発の発生間隔（ms）
-RED_FIRECRACKER_BLOCK_HIT_RADIUS = 30 # 個々の小爆発がブロックを巻き込む半径
+RED_FIRECRACKER_INTERVAL = 60        # 小爆発の発生間隔（ms）
+RED_FIRECRACKER_BLOCK_HIT_RADIUS = 28 # 個々の小爆発がブロックを巻き込む半径
 
 
 # 青：上方向の水流（押し流す）
@@ -171,10 +174,12 @@ YELLOW_BOLT_RADIUS   = 35            # 雷が壊す範囲
 # 緑：前方向に放つ風の渦（ブロックを巻き込んで壊す）
 GREEN_WIND_SPEED     = 7              # 渦の進行速度（px/frame）※初速
 GREEN_WIND_SPEED_MIN_RATIO = 0.15     # 終端での速度（初速に対する比率）。小さいほどフェードアウトが顕著
-GREEN_WIND_LIFE_MS   = 750           # 持続時間
-GREEN_WIND_RADIUS_START = 27          # 初期半径
-GREEN_WIND_RADIUS_END   = 65          # 終端半径（成長する）
+GREEN_WIND_LIFE_MS   = 1500           # 持続時間
+GREEN_WIND_RADIUS_START = 30          # 初期半径
+GREEN_WIND_RADIUS_END   = 70          # 終端半径（成長する）
 GREEN_WIND_MAX_DISTANCE = 270         # 最大飛距離（px）。発射位置からこの距離進むと消滅
+GREEN_WIND_KICK_MIN  = 6.5            # ブロックを弾く速度の最小値（px/frame）
+GREEN_WIND_KICK_MAX  = 9.0            # ブロックを弾く速度の最大値（px/frame）
 GREEN_SPEED_MULT     = 1.35
 
 # 黒：周囲のブロックがスロー、岩は2秒で破壊
@@ -395,6 +400,11 @@ class Bomb:
         self.explosion_max = 500       # 爆発エフェクトを長めに
         self.shards = []               # 飛び散る破片
         self.shock_rings = []           # 衝撃の輪（複数）
+        # 軌跡のパチパチ火花
+        # 各要素: {"x", "y", "life", "max", "r", "color", "active"}
+        # active=True のときだけブロック判定対象
+        self.trail_sparks = []
+        self.trail_spawn_tick = 0
 
     def update(self, dt):
         if not self.exploded:
@@ -402,6 +412,11 @@ class Bomb:
             self.y += self.vy
             self.vy += 0.10              # 重力
             self.fuse -= dt
+            # 軌跡の火花を一定間隔で生成
+            self.trail_spawn_tick += dt
+            while self.trail_spawn_tick >= RED_BOMB_TRAIL_INTERVAL:
+                self.trail_spawn_tick -= RED_BOMB_TRAIL_INTERVAL
+                self._spawn_trail_spark()
             if self.fuse <= 0:
                 self.exploded = True
                 self.explosion_anim = self.explosion_max
@@ -426,12 +441,74 @@ class Bomb:
                     self.shards.remove(shard)
             for ring in self.shock_rings:
                 ring["life"] = max(0, ring["life"] - dt)
+        # 軌跡の火花を更新（爆発後も残り火花は消えるまで描画）
+        for sp in self.trail_sparks[:]:
+            sp["life"] -= dt
+            if sp["life"] <= 0:
+                self.trail_sparks.remove(sp)
+
+    def _spawn_trail_spark(self):
+        """爆弾の現在位置付近にパチパチ火花を1つ追加。
+        爆弾の進行方向と逆側（=後ろ）に出すことで軌跡として見えやすくする"""
+        # 進行方向ベクトルを正規化（爆弾の速度から）
+        speed = math.hypot(self.vx, self.vy)
+        if speed > 0.01:
+            nx = -self.vx / speed   # 進行方向の逆
+            ny = -self.vy / speed
+        else:
+            nx, ny = 0.0, 1.0
+        # 爆弾の後ろ側にオフセットして配置
+        back_dist = random.uniform(2, 14)
+        # 横方向にも少し散らす（軌跡を太く見せる）
+        perp_dist = random.uniform(-6, 6)
+        # 進行方向に垂直なベクトル
+        px = -ny
+        py = nx
+        ox = nx * back_dist + px * perp_dist
+        oy = ny * back_dist + py * perp_dist
+        self.trail_sparks.append({
+            "x":     self.x + ox,
+            "y":     self.y + oy,
+            "life":  RED_BOMB_TRAIL_LIFE,
+            "max":   RED_BOMB_TRAIL_LIFE,
+            "r":     random.randint(6, 10),
+            "color": random.choice([
+                (255, 230, 120),
+                (255, 180,  60),
+                (255, 120,  40),
+            ]),
+            "active": True,   # ブロック判定したら False にする
+        })
 
     def is_dead(self):
         return (self.exploded and self.explosion_anim <= 0
-                and not self.shards)
+                and not self.shards and not self.trail_sparks)
 
     def draw(self, surface):
+        # 軌跡のパチパチ火花を描画（爆弾の本体・爆発に関わらず常に描く）
+        for sp in self.trail_sparks:
+            ratio = max(0.0, sp["life"] / sp["max"])
+            r = max(1, int(sp["r"] * (0.4 + 0.6 * ratio)))
+            alpha = int(255 * ratio)
+            try:
+                spark_surf = pygame.Surface(
+                    (r * 4 + 4, r * 4 + 4), pygame.SRCALPHA)
+                # 外側のグロー
+                pygame.draw.circle(
+                    spark_surf, (*sp["color"], alpha // 3),
+                    (r * 2 + 2, r * 2 + 2), r * 2)
+                # 中心の火花
+                pygame.draw.circle(
+                    spark_surf, (*sp["color"], alpha),
+                    (r * 2 + 2, r * 2 + 2), r)
+                surface.blit(
+                    spark_surf,
+                    (int(sp["x"] - r * 2 - 2), int(sp["y"] - r * 2 - 2)))
+            except Exception:
+                pygame.draw.circle(
+                    surface, sp["color"],
+                    (int(sp["x"]), int(sp["y"])), r)
+
         if not self.exploded:
             # 点滅する爆弾本体
             blink = (self.fuse // 100) % 2 == 0
@@ -1265,6 +1342,21 @@ class CosmicGame:
             bomb.update(dt)
             if (not was_exploded) and bomb.exploded:
                 self._explode_at(bomb.x, bomb.y, RED_BOMB_RADIUS)
+            # 軌跡火花とブロックの当たり判定（爆発前の火花のみ有効）
+            for sp in bomb.trail_sparks:
+                if not sp["active"]:
+                    continue
+                for block in self.blocks[:]:
+                    if math.hypot(block["x"] - sp["x"],
+                                  block["y"] - sp["y"]) < RED_BOMB_TRAIL_HIT_RADIUS:
+                        self._spawn_particles(
+                            block["x"], block["y"],
+                            BLOCK_COLORS.get(block["type"], WHITE), count=6)
+                        self.blocks.remove(block)
+                        self.score += SCORE_BREAK_BLOCK
+                        sp["active"] = False   # 1度ブロックに当たったら消費
+                        sp["life"] = min(sp["life"], 120)  # すぐフェードアウト
+                        break
             if bomb.is_dead():
                 self.bombs.remove(bomb)
 
@@ -1336,7 +1428,8 @@ class CosmicGame:
                     # 既存の vx に加算（複数渦に押されたらより強く弾かれる）
                     current_vx = block.get("vx", 0.0)
                     # 弾き速度はランダムで少しばらつかせる
-                    kick = direction * random.uniform(3.0, 4.0)
+                    kick = direction * random.uniform(
+                        GREEN_WIND_KICK_MIN, GREEN_WIND_KICK_MAX)
                     block["vx"] = current_vx + kick
                     # 弾かれた瞬間の小さな視覚効果
                     self._spawn_particles(
