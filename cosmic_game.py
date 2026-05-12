@@ -146,10 +146,13 @@ COLOR_CHARGES_PER_STOCK = 1
 MAX_STOCKS              = 3
 
 # 能力パラメータ
-# 赤：爆弾
-RED_BOMB_FUSE_MS    = 1000           # 1秒で爆発
-RED_BOMB_RADIUS     = 100             # 爆発半径
-RED_BOMB_SPEED      = 6              # 投擲初速
+# 赤：爆弾（プレイヤーの真上から落下、スペースで起爆）
+RED_BOMB_RADIUS         = 100        # 爆発半径
+RED_BOMB_DROP_HEIGHT    = 10         # プレイエリア上端から何px下から落とし始めるか
+RED_BOMB_INITIAL_SPEED  = 0        # 落下初速（px/frame）
+RED_BOMB_GRAVITY        = 0.15       # 落下加速度（px/frame^2）大きいほど速く加速
+RED_BOMB_MAX_SPEED      = 13         # 落下最大速度（px/frame）逃げきれないように上限
+RED_BOMB_AUTO_FUSE_MS   = 3500       # 起爆されないままこの時間経つと自動爆発（安全策）
 RED_BOMB_TRAIL_INTERVAL  = 25        # 軌跡の火花を出す間隔（ms）
 RED_BOMB_TRAIL_LIFE      = 700       # 火花の寿命（ms）長めにして軌跡として残す
 RED_BOMB_TRAIL_HIT_RADIUS = 18       # 軌跡の火花がブロックを壊す半径
@@ -171,7 +174,6 @@ YELLOW_BOLT_COUNT    = 3
 YELLOW_BOLT_DELAY    = 150           # 各ボルトの間隔（ms）
 YELLOW_BOLT_RADIUS   = 35            # 雷が壊す範囲
 
-# 緑：前方向に放つ風の渦（ブロックを巻き込んで壊す）
 GREEN_WIND_SPEED     = 7              # 渦の進行速度（px/frame）※初速
 GREEN_WIND_SPEED_MIN_RATIO = 0.15     # 終端での速度（初速に対する比率）。小さいほどフェードアウトが顕著
 GREEN_WIND_LIFE_MS   = 1500           # 持続時間
@@ -388,14 +390,17 @@ class ExplosionShard:
 # 爆弾（赤の能力）
 # ============================================================
 class Bomb:
-    """投擲後に重力で落ち、一定時間後に爆発する"""
+    """上から重力で加速しながら落下し、起爆指示を受けたら爆発する。
+    起爆されないまま一定時間（RED_BOMB_AUTO_FUSE_MS）が経つと自動爆発（安全策）"""
     def __init__(self, x, y, vx, vy):
         self.x = float(x)
         self.y = float(y)
         self.vx = float(vx)
         self.vy = float(vy)
-        self.fuse = RED_BOMB_FUSE_MS
+        # 起爆されないまま画面外に行かないようにタイマー
+        self.fuse = RED_BOMB_AUTO_FUSE_MS
         self.exploded = False
+        self.detonate_requested = False   # 外部からの起爆要求
         self.explosion_anim = 0
         self.explosion_max = 500       # 爆発エフェクトを長めに
         self.shards = []               # 飛び散る破片
@@ -406,33 +411,45 @@ class Bomb:
         self.trail_sparks = []
         self.trail_spawn_tick = 0
 
+    def detonate(self):
+        """外部から呼んで起爆指示を出す。実際の爆発は次の update で行われる"""
+        if not self.exploded:
+            self.detonate_requested = True
+
+    def _do_explode(self):
+        self.exploded = True
+        self.explosion_anim = self.explosion_max
+        # 破片を一気に生成
+        for _ in range(28):
+            self.shards.append(
+                ExplosionShard(self.x, self.y))
+        # 衝撃のリングを段階的に
+        self.shock_rings = [
+            {"life": 500, "max": 500, "max_r": RED_BOMB_RADIUS * 1.0,
+             "color": (255, 220, 120)},
+            {"life": 400, "max": 400, "max_r": RED_BOMB_RADIUS * 1.4,
+             "color": (255, 140,  60)},
+            {"life": 320, "max": 320, "max_r": RED_BOMB_RADIUS * 1.7,
+             "color": (255,  80,  30)},
+        ]
+
     def update(self, dt):
         if not self.exploded:
             self.x += self.vx
             self.y += self.vy
-            self.vy += 0.10              # 重力
+            # 重力で加速（最大速度で頭打ち）
+            self.vy = min(RED_BOMB_MAX_SPEED, self.vy + RED_BOMB_GRAVITY)
             self.fuse -= dt
             # 軌跡の火花を一定間隔で生成
             self.trail_spawn_tick += dt
             while self.trail_spawn_tick >= RED_BOMB_TRAIL_INTERVAL:
                 self.trail_spawn_tick -= RED_BOMB_TRAIL_INTERVAL
                 self._spawn_trail_spark()
-            if self.fuse <= 0:
-                self.exploded = True
-                self.explosion_anim = self.explosion_max
-                # 破片を一気に生成
-                for _ in range(28):
-                    self.shards.append(
-                        ExplosionShard(self.x, self.y))
-                # 衝撃のリングを段階的に
-                self.shock_rings = [
-                    {"life": 500, "max": 500, "max_r": RED_BOMB_RADIUS * 1.0,
-                     "color": (255, 220, 120)},
-                    {"life": 400, "max": 400, "max_r": RED_BOMB_RADIUS * 1.4,
-                     "color": (255, 140,  60)},
-                    {"life": 320, "max": 320, "max_r": RED_BOMB_RADIUS * 1.7,
-                     "color": (255,  80,  30)},
-                ]
+            # 起爆条件：外部からの要求 / タイマー切れ / 画面下まで到達
+            if (self.detonate_requested
+                    or self.fuse <= 0
+                    or self.y >= PLAY_BOTTOM - 4):
+                self._do_explode()
         else:
             self.explosion_anim -= dt
             for shard in self.shards[:]:
@@ -514,7 +531,7 @@ class Bomb:
             blink = (self.fuse // 100) % 2 == 0
             color = (250, 80, 80) if blink else (255, 200, 60)
             # ヒューズが短くなるほど大きく脈動
-            fuse_ratio = max(0.0, self.fuse / RED_BOMB_FUSE_MS)
+            fuse_ratio = max(0.0, self.fuse / RED_BOMB_AUTO_FUSE_MS)
             pulse_r = 8 + int(4 * (1 - fuse_ratio))
             # 周囲のグロー（危険感）
             try:
@@ -1290,6 +1307,15 @@ class CosmicGame:
 
     # --- スペースキー：能力発動 ----------------------------
     def _trigger_ability(self):
+        # 赤は特殊：落下中の爆弾があれば、ストックを消費せず起爆だけ行う
+        if self.player_monster == "red":
+            # 未爆発の爆弾が1つでもあれば起爆
+            live_bombs = [b for b in self.bombs if not b.exploded]
+            if live_bombs:
+                for b in live_bombs:
+                    b.detonate()
+                # ここではストックを消費しない
+                return
         if self.stocks <= 0:
             return
         if self.player_monster == "red":
@@ -1307,11 +1333,13 @@ class CosmicGame:
         self.stocks -= 1
 
     def _ability_red(self):
-        # 爆弾を投擲
+        # プレイヤーの真上から爆弾を投下（X座標は押下した瞬間の位置に固定）
+        drop_x = self.player_x
+        drop_y = PLAY_TOP + RED_BOMB_DROP_HEIGHT
         self.bombs.append(Bomb(
-            self.player_x, self.player_y - self.player_size // 2,
-            vx=0, vy=-RED_BOMB_SPEED))
-        # 同時にプレイヤー周囲で爆竹がスタート
+            drop_x, drop_y,
+            vx=0, vy=RED_BOMB_INITIAL_SPEED))
+        # 同時にプレイヤー周囲で爆竹がスタート（こちらはそのまま）
         self.firecracker_timer = RED_FIRECRACKER_DURATION
         self.firecracker_spawn_tick = 0
 
@@ -2294,7 +2322,7 @@ class CosmicGame:
     def _ability_description(self, monster):
         """各モンスターの能力を短く説明"""
         return {
-            "red":    "Bomb + Firecracker\nBig explosion + close pops",
+            "red":    "Drop bomb from above\nPress SPACE again to detonate",
             "blue":   "Water stream pushes\nblocks upward",
             "yellow": "Drop 3 lightning bolts\nat random spots",
             "green":  "Forward wind vortex\nKnocks blocks aside",
