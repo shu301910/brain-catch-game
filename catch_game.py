@@ -222,6 +222,13 @@ class Game:
         self.ending_stars    = []
         self.ending_phase    = 0   # 0=フラッシュ, 1=星爆発, 2=テキスト表示
 
+        # ガラス破壊（shatter）演出用
+        self.shatter_active   = False
+        self.shatter_timer    = 0
+        self.shatter_snapshot = None   # 撃破時の画面スナップショット
+        self.shatter_cracks   = []     # ヒビの線分リスト
+        self.shatter_shards   = []     # ガラスの破片リスト
+
         # 既存の状態異常
         self.dye_timer    = 0
         self.invert_timer = 0
@@ -345,6 +352,13 @@ class Game:
         self.boss        = None   # ラスボス
         self.boss_mode   = False  # ラスボス戦フラグ
         self.player_hp   = PLAYER_MAX_HP
+
+        # ガラス破壊演出のリセット
+        self.shatter_active   = False
+        self.shatter_timer    = 0
+        self.shatter_snapshot = None
+        self.shatter_cracks   = []
+        self.shatter_shards   = []
 
         # ゲーム開始待ちフラグ
         self.waiting_start = True
@@ -743,7 +757,7 @@ class Game:
         if self.boss_mode and self.boss is not None:
             self.boss.take_damage(ball.color_name, atk_mult)
             if self.boss.is_dead():
-                self._start_ending()
+                self._start_shatter()
         # 2体モード時
         elif self.dual_mode and self.enemy_right is not None:
             if block.type == "red" or (ball.color_name == "white" and block.type == "red"):
@@ -963,7 +977,7 @@ class Game:
                             if self.boss_mode and self.boss is not None:
                                 self.boss.take_damage(attack_color, atk_mult)
                                 if self.boss.is_dead():
-                                    self._start_ending()
+                                    self._start_shatter()
                             elif self.dual_mode and self.enemy_right is not None:
                                 # 2体モード時：赤ブロックは右の敵、青ブロックは左の敵を攻撃
                                 if block.type == "red":
@@ -1236,6 +1250,241 @@ class Game:
         for planet in self.planets:
             planet.update()
 
+    # ============================================
+    # ガラス破壊（shatter）演出
+    # ============================================
+    def _start_shatter(self):
+        """ラスボス撃破→ガラスにヒビ→割れる演出を開始。
+        終わったら _start_ending() を呼んでエンディングに進む。"""
+        # 状態異常をキャンセル（エンディングと同じ前処理）
+        self._cancel_speed_boost()
+        self._cancel_slow()
+        self._cancel_gravity()
+
+        # 現在の画面を撮影（ボス撃破の瞬間を凍結）
+        try:
+            self.shatter_snapshot = self.screen.copy()
+        except Exception:
+            self.shatter_snapshot = None
+
+        # 衝撃の中心はボスの中心
+        if self.boss is not None:
+            cx = self.boss.ex + self.boss.ew // 2
+            cy = self.boss.ey + self.boss.eh // 2
+        else:
+            cx = WIDTH // 2
+            cy = HEIGHT // 2
+        self._shatter_cx = cx
+        self._shatter_cy = cy
+
+        # ヒビの生成：中心から放射状の主要ヒビ＋枝分かれ
+        self.shatter_cracks = []
+        main_count = random.randint(7, 10)
+        for i in range(main_count):
+            angle = (math.tau / main_count) * i + random.uniform(-0.2, 0.2)
+            length = random.uniform(WIDTH * 0.45, WIDTH * 0.75)
+            # 主要ヒビをジグザグの線分列として生成
+            points = [(cx, cy)]
+            x, y = cx, cy
+            segs = random.randint(4, 7)
+            for _ in range(segs):
+                seg_len = length / segs
+                angle += random.uniform(-0.25, 0.25)
+                x += math.cos(angle) * seg_len
+                y += math.sin(angle) * seg_len
+                points.append((x, y))
+            self.shatter_cracks.append({
+                "points": points,
+                "width": random.randint(2, 3),
+                "grow_delay": 0,  # 主要ヒビは最初から伸び始める
+            })
+            # 枝分かれ（各主要ヒビから1〜2本）
+            branch_n = random.randint(1, 2)
+            for _ in range(branch_n):
+                if len(points) < 3:
+                    continue
+                start_idx = random.randint(1, len(points) - 2)
+                sx, sy = points[start_idx]
+                bangle = angle + random.uniform(-1.0, 1.0)
+                blen = random.uniform(80, 200)
+                bpts = [(sx, sy)]
+                bx, by = sx, sy
+                bsegs = random.randint(2, 4)
+                for _ in range(bsegs):
+                    seg_len = blen / bsegs
+                    bangle += random.uniform(-0.3, 0.3)
+                    bx += math.cos(bangle) * seg_len
+                    by += math.sin(bangle) * seg_len
+                    bpts.append((bx, by))
+                self.shatter_cracks.append({
+                    "points": bpts,
+                    "width": 1,
+                    "grow_delay": random.randint(100, 400),
+                })
+
+        # 破片の生成：画面を扇形セクターに分割して三角形破片にする
+        self.shatter_shards = []
+        shard_count = 36
+        max_r = math.hypot(WIDTH, HEIGHT)  # 画面の対角線
+        for i in range(shard_count):
+            a1 = (math.tau / shard_count) * i + random.uniform(-0.05, 0.05)
+            a2 = (math.tau / shard_count) * (i + 1) + random.uniform(-0.05, 0.05)
+            r_inner = random.uniform(20, 90)
+            r_outer = max_r * random.uniform(0.85, 1.1)
+            # 4頂点の四角形破片（中心側2点・外側2点）
+            verts = [
+                (cx + math.cos(a1) * r_inner, cy + math.sin(a1) * r_inner),
+                (cx + math.cos(a2) * r_inner, cy + math.sin(a2) * r_inner),
+                (cx + math.cos(a2) * r_outer, cy + math.sin(a2) * r_outer),
+                (cx + math.cos(a1) * r_outer, cy + math.sin(a1) * r_outer),
+            ]
+            # 飛散方向（中心からセクターの中央方向）
+            mid_a = (a1 + a2) / 2
+            speed = random.uniform(0.15, 0.45)  # px/ms
+            vx = math.cos(mid_a) * speed
+            vy = math.sin(mid_a) * speed + 0.05  # 少し下方向バイアス
+            self.shatter_shards.append({
+                "verts": verts,
+                "vx": vx,
+                "vy": vy,
+                "rot": 0.0,
+                "rot_speed": random.uniform(-0.003, 0.003),  # rad/ms
+                "gravity": random.uniform(0.0008, 0.0015),   # px/ms^2
+                "center": (
+                    sum(v[0] for v in verts) / 4,
+                    sum(v[1] for v in verts) / 4,
+                ),
+            })
+
+        self.shatter_active = True
+        self.shatter_timer  = 0
+        self.state = "ending"   # メインループ側は ending として描画する
+
+    def _draw_shatter(self, dt):
+        """ガラス割れ演出の1フレーム描画。
+        終わったら shatter_active を False にして _start_ending() を呼ぶ。"""
+        screen = self.screen
+        self.shatter_timer += dt
+        t = self.shatter_timer
+
+        # フェーズ定義
+        T_CRACK_GROW   = 800    # 0〜800ms：ヒビが伸びる
+        T_FLASH        = 950    # 800〜950ms：白フラッシュ
+        T_SHARDS_END   = 1700   # 950〜1700ms：破片が飛散
+        T_TOTAL        = 1900   # 1700〜1900ms：暗転して次へ
+
+        # ベース：撃破時のスナップショットを表示
+        if self.shatter_snapshot is not None:
+            # 画面ゆれ（hit stop の演出）
+            shake = 0
+            if t < 200:
+                shake = int(8 * (1 - t / 200))
+            ox = random.randint(-shake, shake) if shake > 0 else 0
+            oy = random.randint(-shake, shake) if shake > 0 else 0
+            screen.blit(self.shatter_snapshot, (ox, oy))
+        else:
+            screen.fill(BLACK)
+
+        # ヒビを伸ばしながら描画
+        if t < T_FLASH:
+            for crack in self.shatter_cracks:
+                grow_t = max(0, t - crack["grow_delay"])
+                grow_ratio = min(1.0, grow_t / max(1, (T_CRACK_GROW - crack["grow_delay"])))
+                pts = crack["points"]
+                if grow_ratio <= 0 or len(pts) < 2:
+                    continue
+                # 何頂点まで描くか
+                total_segs = len(pts) - 1
+                visible_segs_f = grow_ratio * total_segs
+                full_segs = int(visible_segs_f)
+                partial   = visible_segs_f - full_segs
+
+                draw_pts = list(pts[:full_segs + 1])
+                if full_segs < total_segs and partial > 0:
+                    p0 = pts[full_segs]
+                    p1 = pts[full_segs + 1]
+                    draw_pts.append((
+                        p0[0] + (p1[0] - p0[0]) * partial,
+                        p0[1] + (p1[1] - p0[1]) * partial,
+                    ))
+                if len(draw_pts) >= 2:
+                    # 黒い太いヒビ（外側）+ 白いハイライト
+                    try:
+                        pygame.draw.lines(screen, (20, 20, 30), False,
+                                          draw_pts, crack["width"] + 2)
+                        pygame.draw.lines(screen, (240, 240, 255), False,
+                                          draw_pts, crack["width"])
+                    except Exception:
+                        pass
+
+        # フェーズ2：白フラッシュ（割れる瞬間）
+        if T_CRACK_GROW <= t < T_FLASH:
+            fr = (t - T_CRACK_GROW) / (T_FLASH - T_CRACK_GROW)
+            # 山なりに明るくなる（中央でピーク）
+            alpha = int(255 * (1 - abs(2 * fr - 1)))
+            flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            flash.fill((255, 255, 255, alpha))
+            screen.blit(flash, (0, 0))
+
+        # フェーズ3：破片が飛散
+        if t >= T_FLASH:
+            shard_t = t - T_FLASH
+            shard_max = T_SHARDS_END - T_FLASH
+
+            # 背景は暗くしていく
+            fade_ratio = min(1.0, shard_t / shard_max)
+            dark = pygame.Surface((WIDTH, HEIGHT))
+            dark.fill(BLACK)
+            dark.set_alpha(int(255 * fade_ratio))
+            screen.blit(dark, (0, 0))
+
+            # 各破片を移動して描画
+            for shard in self.shatter_shards:
+                # 物理更新（dt基準）
+                shard["vy"] += shard["gravity"] * dt
+                cx_old, cy_old = shard["center"]
+                shard["center"] = (
+                    cx_old + shard["vx"] * dt,
+                    cy_old + shard["vy"] * dt,
+                )
+                shard["rot"] += shard["rot_speed"] * dt
+
+                # 頂点を中心基準で回転・平行移動
+                ccx, ccy = shard["center"]
+                cos_r = math.cos(shard["rot"])
+                sin_r = math.sin(shard["rot"])
+                # 元の頂点から元の中心を引いて回転、新中心に足す
+                orig_verts = shard["verts"]
+                orig_cx = sum(v[0] for v in orig_verts) / 4
+                orig_cy = sum(v[1] for v in orig_verts) / 4
+                drawn = []
+                for vx, vy in orig_verts:
+                    rx = vx - orig_cx
+                    ry = vy - orig_cy
+                    nx = rx * cos_r - ry * sin_r + ccx
+                    ny = rx * sin_r + ry * cos_r + ccy
+                    drawn.append((nx, ny))
+
+                # 破片本体（暗い半透明＋白い縁）
+                try:
+                    poly_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                    alpha_v = int(255 * (1 - fade_ratio * 0.6))
+                    pygame.draw.polygon(poly_surf, (30, 30, 50, alpha_v), drawn)
+                    pygame.draw.polygon(poly_surf, (220, 230, 255, alpha_v),
+                                        drawn, 1)
+                    screen.blit(poly_surf, (0, 0))
+                except Exception:
+                    pass
+
+        # 演出完了 → エンディング本編へ
+        if t >= T_TOTAL:
+            self.shatter_active = False
+            # メモリ解放
+            self.shatter_snapshot = None
+            self.shatter_cracks   = []
+            self.shatter_shards   = []
+            self._start_ending()
+
     def _start_ending(self):
         """ラスボス撃破→ENDING演出開始"""
         self._cancel_speed_boost()
@@ -1245,7 +1494,7 @@ class Game:
         # ボス撃破のボーナス
         self.score += 1000
 
-        total_defeated = sum(self.defeated_count.values())
+        total_defeated = sum(self.defeated_count.values()) + 1
         self.score_manager.add_score(
             self.mode, self.score, self.elapsed_time, total_defeated)
         self.ending_timer = 0
@@ -1269,6 +1518,11 @@ class Game:
 
     def draw_ending(self, dt):
         """ENDING画面の描画・アニメーション更新"""
+        # ボス撃破直後はガラス破壊演出を先に再生
+        if self.shatter_active:
+            self._draw_shatter(dt)
+            return
+
         self.ending_timer += dt
         screen = self.screen
 
@@ -2001,7 +2255,10 @@ class Game:
     def handle_click(self, mouse_pos):
         # gameover / ending 画面でクリックされたら「終了」フラグを立てる
         # （main.py がこれを検知してメニュー画面に戻す）
+        # ただしガラス破壊演出中はスキップさせない
         if self.state in ("gameover", "ending"):
+            if self.shatter_active:
+                return
             self.finished = True
 
     def handle_keydown(self, key):
@@ -2021,6 +2278,9 @@ class Game:
 
         elif self.state == "ending":
             if key == pygame.K_RETURN:
+                # ガラス破壊演出中はスキップ不可
+                if self.shatter_active:
+                    return
                 self.finished = True
 
     # ============================================
