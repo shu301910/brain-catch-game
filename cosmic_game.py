@@ -1336,7 +1336,7 @@ class CosmicGame:
                     # 既存の vx に加算（複数渦に押されたらより強く弾かれる）
                     current_vx = block.get("vx", 0.0)
                     # 弾き速度はランダムで少しばらつかせる
-                    kick = direction * random.uniform(3.0, 5.0)
+                    kick = direction * random.uniform(3.0, 4.0)
                     block["vx"] = current_vx + kick
                     # 弾かれた瞬間の小さな視覚効果
                     self._spawn_particles(
