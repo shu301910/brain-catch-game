@@ -154,8 +154,8 @@ RED_SPEED_MULT      = 1.5            # 移動速度UP（ストックがあるあ
 # 赤：爆竹（プレイヤー周囲の連続爆発）
 RED_FIRECRACKER_DURATION = 2000      # 持続時間（ms）
 RED_FIRECRACKER_RADIUS   = 100        # 各小爆発が当たる範囲（プレイヤー中心）
-RED_FIRECRACKER_INTERVAL = 90        # 小爆発の発生間隔（ms）
-RED_FIRECRACKER_BLOCK_HIT_RADIUS = 28 # 個々の小爆発がブロックを巻き込む半径
+RED_FIRECRACKER_INTERVAL = 55        # 小爆発の発生間隔（ms）
+RED_FIRECRACKER_BLOCK_HIT_RADIUS = 30 # 個々の小爆発がブロックを巻き込む半径
 
 
 # 青：上方向の水流（押し流す）
@@ -169,10 +169,12 @@ YELLOW_BOLT_DELAY    = 150           # 各ボルトの間隔（ms）
 YELLOW_BOLT_RADIUS   = 35            # 雷が壊す範囲
 
 # 緑：前方向に放つ風の渦（ブロックを巻き込んで壊す）
-GREEN_WIND_SPEED     = 7              # 渦の進行速度（px/frame）
-GREEN_WIND_LIFE_MS   = 1500           # 持続時間
-GREEN_WIND_RADIUS_START = 30          # 初期半径
-GREEN_WIND_RADIUS_END   = 70          # 終端半径（成長する）
+GREEN_WIND_SPEED     = 7              # 渦の進行速度（px/frame）※初速
+GREEN_WIND_SPEED_MIN_RATIO = 0.15     # 終端での速度（初速に対する比率）。小さいほどフェードアウトが顕著
+GREEN_WIND_LIFE_MS   = 750           # 持続時間
+GREEN_WIND_RADIUS_START = 27          # 初期半径
+GREEN_WIND_RADIUS_END   = 65          # 終端半径（成長する）
+GREEN_WIND_MAX_DISTANCE = 270         # 最大飛距離（px）。発射位置からこの距離進むと消滅
 GREEN_SPEED_MULT     = 1.35
 
 # 黒：周囲のブロックがスロー、岩は2秒で破壊
@@ -691,6 +693,7 @@ class WindVortex:
     def __init__(self, x, y):
         self.x = float(x)
         self.y = float(y)
+        self.start_y = float(y)              # 発射位置（飛距離計算用）
         self.vy = -GREEN_WIND_SPEED          # 上方向に進む
         self.life = GREEN_WIND_LIFE_MS
         self.max_life = GREEN_WIND_LIFE_MS
@@ -701,10 +704,17 @@ class WindVortex:
         self.captured = []
 
     def update(self, dt):
+        # 進度（0.0 → 1.0）
+        progress = 1.0 - max(0.0, self.life / self.max_life)
+        # 速度の減衰：序盤は初速を維持、後半でスッと遅くなる
+        # ease-in cubic を使って後半に減速が集中するカーブを作る
+        ease = progress ** 3
+        speed_ratio = 1.0 - (1.0 - GREEN_WIND_SPEED_MIN_RATIO) * ease
+        self.vy = -GREEN_WIND_SPEED * speed_ratio
+
         self.y += self.vy
         self.life -= dt
         # 半径を時間とともに大きくする（拡散する渦）
-        progress = 1.0 - max(0.0, self.life / self.max_life)
         self.radius = (GREEN_WIND_RADIUS_START
                        + (GREEN_WIND_RADIUS_END - GREEN_WIND_RADIUS_START)
                        * progress)
@@ -717,8 +727,11 @@ class WindVortex:
             cap["dist"] = max(0, cap["dist"] - dt * 0.12)
 
     def is_dead(self):
+        # 飛距離（発射位置からの移動量）が最大値を超えたら消滅
+        traveled = self.start_y - self.y
         return (self.life <= 0 or
-                self.y < PLAY_TOP - self.radius)
+                self.y < PLAY_TOP - self.radius or
+                traveled >= GREEN_WIND_MAX_DISTANCE)
 
     def contains(self, bx, by):
         """ブロック (bx, by) が渦の範囲内にあるか"""
@@ -1323,7 +1336,7 @@ class CosmicGame:
                     # 既存の vx に加算（複数渦に押されたらより強く弾かれる）
                     current_vx = block.get("vx", 0.0)
                     # 弾き速度はランダムで少しばらつかせる
-                    kick = direction * random.uniform(6.5, 9.0)
+                    kick = direction * random.uniform(3.0, 5.0)
                     block["vx"] = current_vx + kick
                     # 弾かれた瞬間の小さな視覚効果
                     self._spawn_particles(
