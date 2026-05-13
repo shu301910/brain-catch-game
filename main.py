@@ -90,6 +90,13 @@ def main():
         # 日本語用（タイトル画面など限定使用）
         "jp_big": pygame.font.SysFont(jp_font_name, 48, bold=True),
     }
+    # 日本語の説明本文用フォントも用意（HOW TO PLAY画面用）
+    # 既存の small/mini フォントは Creepster で日本語非対応のため、
+    # 日本語が混ざる説明テキストは jp_* フォントに置き換える必要がある。
+    # ここでは menu.py 側で簡易的に jp_small/jp_mini を使えるようにする。
+    fonts["jp_font"]  = pygame.font.SysFont(jp_font_name, 28)
+    fonts["jp_small"] = pygame.font.SysFont(jp_font_name, 22)
+    fonts["jp_mini"]  = pygame.font.SysFont(jp_font_name, 18)
 
     # 画像とハイスコア管理を準備
     images = load_all_images()
@@ -122,6 +129,10 @@ def main():
                     menu.handle_click(event.pos)
                 elif current_game is not None:
                     current_game.handle_click(event.pos)
+            if event.type == pygame.MOUSEWHEEL:
+                # マウスホイールはメニュー画面（HOW TO PLAY のスクロール）に渡す
+                if app_state == "menu":
+                    menu.handle_mousewheel(event.y)
             if event.type == pygame.KEYDOWN:
                 if app_state == "menu":
                     menu.handle_keydown(event.key)

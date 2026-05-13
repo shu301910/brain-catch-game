@@ -1806,29 +1806,59 @@ class Game:
         small_font = self.fonts["small"]
         mini_font  = self.fonts["mini"]
         bar_x = ENEMY_X
-        bar_y = HEIGHT - 80
         bar_w = ENEMY_WIDTH
         bar_h = 18
-
-        # ハートストック表示用にパネルを少し下に伸ばす
-        panel = pygame.Surface((bar_w + 20, bar_h + 90), pygame.SRCALPHA)
+ 
+        # ハートサイズ（大きめに）
+        heart_size = 28
+        heart_gap  = 10
+ 
+        # レイアウト計算（上から順）：
+        #   [Your HP ラベル][ハート列]
+        #   [HP バー本体]
+        #   [HP テキスト 100/100]
+        # を1つのパネルに収める
+ 
+        # HPバーの位置をベースに決める（画面下から余裕を持って配置）
+        bar_y = HEIGHT - 90
+ 
+        # ハート行のY座標（HPバーの上に配置）
+        heart_y = bar_y - heart_size - 12
+ 
+        # ラベル "Your HP" のY座標（ハートと同じ行の左側）
+        label_y = heart_y + (heart_size - small_font.get_height()) // 2
+ 
+        # パネル全体の範囲
+        panel_top    = heart_y - 8
+        panel_bottom = bar_y + bar_h + small_font.get_height() + 10
+        panel_h      = panel_bottom - panel_top
+        panel = pygame.Surface((bar_w + 20, panel_h), pygame.SRCALPHA)
         panel.fill((0, 0, 0, 150))
-        screen.blit(panel, (bar_x - 10, bar_y - 30))
-
+        screen.blit(panel, (bar_x - 10, panel_top))
+ 
+        # "Your HP" ラベル
         label = small_font.render("Your HP", True, WHITE)
-        screen.blit(label, (bar_x, bar_y - 25))
-
+        screen.blit(label, (bar_x, label_y))
+ 
+        # ハート2個（HPバーの右寄せ）
+        total_hearts_w = self.MAX_HEAL_STOCK * heart_size + (self.MAX_HEAL_STOCK - 1) * heart_gap
+        hearts_start_x = bar_x + bar_w - total_hearts_w
+        for i in range(self.MAX_HEAL_STOCK):
+            hx = hearts_start_x + i * (heart_size + heart_gap)
+            filled = (i < self.heal_stock)
+            self._draw_heart(hx, heart_y, heart_size, filled)
+ 
+        # HPバー本体
         # 使用時フラッシュ：HPバーが緑→白くピカッと光る
         if self.heal_use_flash_timer > 0:
             ratio = self.heal_use_flash_timer / 500
-            # 緑(0,255,0)から白(255,255,255)に補間
             r = int(0   + (255 - 0)   * ratio)
             g = 255
             b = int(0   + (255 - 0)   * ratio)
             hp_color = (r, g, b)
         else:
             hp_color = INVINCIBLE_BLOCK_COLOR if self.invincible_timer > 0 else GREEN
-
+ 
         pygame.draw.rect(screen, WHITE,
                          (bar_x - 2, bar_y - 2, bar_w + 4, bar_h + 4),
                          border_radius=4)
@@ -1841,51 +1871,51 @@ class Game:
         text = small_font.render(
             f"{self.player_hp}/{PLAYER_MAX_HP}", True, WHITE)
         screen.blit(text, (bar_x, bar_y + bar_h + 5))
-
-        # 回復ストック表示（ハート2個並び）
-        stock_label = mini_font.render("HEAL [SPACE]", True, WHITE)
-        screen.blit(stock_label, (bar_x, bar_y + bar_h + 28))
-        heart_y = bar_y + bar_h + 45
-        heart_size = 18
-        gap = 6
-        for i in range(self.MAX_HEAL_STOCK):
-            hx = bar_x + i * (heart_size + gap)
-            filled = (i < self.heal_stock)
-            self._draw_heart(hx, heart_y, heart_size, filled)
-
+ 
     def _draw_heart(self, x, y, size, filled):
-        """ハート型を描画。filled=Trueなら赤、Falseならグレー枠だけ"""
+        """ハート型を描画。filled=Trueなら赤、Falseならグレー枠だけ。
+        描画範囲は (x, y) から (x+size, y+size) の正方形内に収まる。"""
         screen = self.screen
         s = size
-        # 中心
-        cx = x + s // 2
-        cy = y + s // 2
-
+ 
         if filled:
-            color = (235, 60, 90)   # 赤
+            color   = (235, 60, 90)   # 赤
             outline = (255, 255, 255)
         else:
-            color = (40, 40, 50)    # 暗いグレー（空ストック）
-            outline = (120, 120, 130)
-
+            color   = (40, 40, 50)    # 暗いグレー（空ストック）
+            outline = (160, 160, 170)
+ 
         # ハート形：左右2つの円＋下向き三角の組み合わせ
-        r = s // 4
-        # 左の丸
-        pygame.draw.circle(screen, color, (cx - r, cy - r // 2), r)
-        # 右の丸
-        pygame.draw.circle(screen, color, (cx + r, cy - r // 2), r)
-        # 下の三角
-        pts = [
-            (cx - 2 * r, cy - r // 2),
-            (cx + 2 * r, cy - r // 2),
-            (cx, cy + r * 2),
+        # サイズ s の正方形 (x, y)-(x+s, y+s) に綺麗に収まるよう調整
+        r = s // 4                        # 上部の丸の半径
+        lobe_y = y + r + 2                # 丸の中心Y（少し下げる）
+        left_cx  = x + r + 1
+        right_cx = x + s - r - 1
+ 
+        # 下の三角（ハートの先端）
+        tri_pts = [
+            (x + 1,     lobe_y),
+            (x + s - 1, lobe_y),
+            (x + s // 2, y + s - 1),      # 先端は底辺ギリギリまで
         ]
-        pygame.draw.polygon(screen, color, pts)
-        # 輪郭（簡易：枠あり）
+ 
+        # 左の丸
+        pygame.draw.circle(screen, color, (left_cx,  lobe_y), r)
+        # 右の丸
+        pygame.draw.circle(screen, color, (right_cx, lobe_y), r)
+        # 三角
+        pygame.draw.polygon(screen, color, tri_pts)
+ 
+        # 空ストック時は輪郭を描く
         if not filled:
-            pygame.draw.circle(screen, outline, (cx - r, cy - r // 2), r, 1)
-            pygame.draw.circle(screen, outline, (cx + r, cy - r // 2), r, 1)
-            pygame.draw.polygon(screen, outline, pts, 1)
+            pygame.draw.circle(screen, outline, (left_cx,  lobe_y), r, 2)
+            pygame.draw.circle(screen, outline, (right_cx, lobe_y), r, 2)
+            pygame.draw.polygon(screen, outline, tri_pts, 2)
+        else:
+            # 塗りハートにも軽くハイライト枠で立体感
+            pygame.draw.circle(screen, outline, (left_cx,  lobe_y), r, 1)
+            pygame.draw.circle(screen, outline, (right_cx, lobe_y), r, 1)
+            pygame.draw.polygon(screen, outline, tri_pts, 1)
 
     def _draw_status_effects(self):
         screen    = self.screen
