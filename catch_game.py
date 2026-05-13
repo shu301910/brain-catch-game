@@ -217,17 +217,17 @@ class Game:
         self.boss_mode   = False  # ラスボス戦フラグ
         self.player_hp = PLAYER_MAX_HP
 
+        # 回復ストック（紫ブロック破壊で+1、SPACEキーで使用、最大2個）
+        self.heal_stock     = 0
+        self.MAX_HEAL_STOCK = 2
+        # 使用時の演出用：ストック消費時の光るアニメ用タイマー
+        self.heal_use_flash_timer = 0
+
         # ENDINGアニメーション用
         self.ending_timer    = 0
         self.ending_stars    = []
         self.ending_phase    = 0   # 0=フラッシュ, 1=星爆発, 2=テキスト表示
-
-        # ガラス破壊（shatter）演出用
-        self.shatter_active   = False
-        self.shatter_timer    = 0
-        self.shatter_snapshot = None   # 撃破時の画面スナップショット
-        self.shatter_cracks   = []     # ヒビの線分リスト
-        self.shatter_shards   = []     # ガラスの破片リスト
+        self.ending_time_bonus = 0  # クリアタイムボーナス（エンディングで表示用）
 
         # 既存の状態異常
         self.dye_timer    = 0
@@ -353,12 +353,9 @@ class Game:
         self.boss_mode   = False  # ラスボス戦フラグ
         self.player_hp   = PLAYER_MAX_HP
 
-        # ガラス破壊演出のリセット
-        self.shatter_active   = False
-        self.shatter_timer    = 0
-        self.shatter_snapshot = None
-        self.shatter_cracks   = []
-        self.shatter_shards   = []
+        # 回復ストックのリセット
+        self.heal_stock = 0
+        self.heal_use_flash_timer = 0
 
         # ゲーム開始待ちフラグ
         self.waiting_start = True
@@ -627,8 +624,9 @@ class Game:
             block.white_hits += 1
             if block.white_hits >= PURPLE_HITS_SOLO1:
                 self.blocks.remove(block)
-                self.player_hp = min(PLAYER_MAX_HP,
-                                     self.player_hp + HEAL_AMOUNT)
+                # 紫破壊：HPストックを+1（上限を超える分は捨てる）
+                if self.heal_stock < self.MAX_HEAL_STOCK:
+                    self.heal_stock += 1
             return
 
         if ball.color_name == "red":
@@ -637,8 +635,9 @@ class Game:
             block.blue_hit = True
         if block.red_hit and block.blue_hit:
             self.blocks.remove(block)
-            self.player_hp = min(PLAYER_MAX_HP,
-                                 self.player_hp + HEAL_AMOUNT)
+            # 紫破壊：HPストックを+1（上限を超える分は捨てる）
+            if self.heal_stock < self.MAX_HEAL_STOCK:
+                self.heal_stock += 1
 
     def _handle_invincible_block(self, ball, block):
         ball.register_block_hit(block)
@@ -718,16 +717,16 @@ class Game:
     def _get_combo_damage_mult(self, ball):
         """現在のコンボ数から敵への攻撃倍率を取得する。
         ※赤・青ブロックを壊して敵にダメージを与える時だけ呼ぶ。
-        ※無敵状態（攻撃力アップ）発動中はコンボ倍率を無効化（二重がけ防止）"""
+        ※無敵状態（攻撃力アップ）発動中はコンボ倍率を無効化（二重がけ防止）
+        ※上限なし：コンボを繋げば繋ぐほど際限なく倍率が上がる"""
         # 無敵状態中はコンボ倍率は使わない
         if self._attack_boosted:
             return 1.0
 
         combo = ball.combo_count
         if combo >= 2:
-            return min(
-                1.0 + (combo - 1) * COMBO_DAMAGE_STEP,
-                COMBO_DAMAGE_MAX)
+            # 上限を撤廃：コンボを繋げただけ倍率が伸び続ける
+            return 1.0 + (combo - 1) * COMBO_DAMAGE_STEP
         return 1.0
 
     def _handle_normal_block(self, ball, block):
@@ -757,7 +756,7 @@ class Game:
         if self.boss_mode and self.boss is not None:
             self.boss.take_damage(ball.color_name, atk_mult)
             if self.boss.is_dead():
-                self._start_shatter()
+                self._start_ending()
         # 2体モード時
         elif self.dual_mode and self.enemy_right is not None:
             if block.type == "red" or (ball.color_name == "white" and block.type == "red"):
@@ -965,10 +964,9 @@ class Game:
                         atk_mult = ATTACK_BOOST_MULT if self._attack_boosted else 1.0
 
                         if block.type == "purple":
-                            # 紫ブロック → HP回復
-                            self.player_hp = min(
-                                PLAYER_MAX_HP,
-                                self.player_hp + HEAL_AMOUNT)
+                            # 紫ブロック → HPストックを+1（上限を超えたら捨てる）
+                            if self.heal_stock < self.MAX_HEAL_STOCK:
+                                self.heal_stock += 1
                         else:
                             # 赤・青ブロック → 敵にダメージ
                             # 攻撃属性はブロックの色に対応（赤ブロック→赤攻撃、青ブロック→青攻撃）
@@ -977,7 +975,7 @@ class Game:
                             if self.boss_mode and self.boss is not None:
                                 self.boss.take_damage(attack_color, atk_mult)
                                 if self.boss.is_dead():
-                                    self._start_shatter()
+                                    self._start_ending()
                             elif self.dual_mode and self.enemy_right is not None:
                                 # 2体モード時：赤ブロックは右の敵、青ブロックは左の敵を攻撃
                                 if block.type == "red":
@@ -1015,9 +1013,9 @@ class Game:
                         block.white_hits += 1
                         if block.white_hits >= PURPLE_HITS_SOLO1:
                             self.blocks.remove(block)
-                            self.player_hp = min(
-                                PLAYER_MAX_HP,
-                                self.player_hp + HEAL_AMOUNT)
+                            # 紫扱い：HPストックを+1（上限を超えたら捨てる）
+                            if self.heal_stock < self.MAX_HEAL_STOCK:
+                                self.heal_stock += 1
 
 
     # ============================================
@@ -1235,6 +1233,9 @@ class Game:
         if self.bg_flash_timer > 0:
             self.bg_flash_timer = max(0, self.bg_flash_timer - dt)
 
+        if self.heal_use_flash_timer > 0:
+            self.heal_use_flash_timer = max(0, self.heal_use_flash_timer - dt)
+
         for ex in self.explosions[:]:
             ex.update(dt)
             if not ex.active:
@@ -1250,250 +1251,50 @@ class Game:
         for planet in self.planets:
             planet.update()
 
-    # ============================================
-    # ガラス破壊（shatter）演出
-    # ============================================
-    def _start_shatter(self):
-        """ラスボス撃破→ガラスにヒビ→割れる演出を開始。
-        終わったら _start_ending() を呼んでエンディングに進む。"""
-        # 状態異常をキャンセル（エンディングと同じ前処理）
-        self._cancel_speed_boost()
-        self._cancel_slow()
-        self._cancel_gravity()
-
-        # 現在の画面を撮影（ボス撃破の瞬間を凍結）
-        try:
-            self.shatter_snapshot = self.screen.copy()
-        except Exception:
-            self.shatter_snapshot = None
-
-        # 衝撃の中心はボスの中心
-        if self.boss is not None:
-            cx = self.boss.ex + self.boss.ew // 2
-            cy = self.boss.ey + self.boss.eh // 2
-        else:
-            cx = WIDTH // 2
-            cy = HEIGHT // 2
-        self._shatter_cx = cx
-        self._shatter_cy = cy
-
-        # ヒビの生成：中心から放射状の主要ヒビ＋枝分かれ
-        self.shatter_cracks = []
-        main_count = random.randint(7, 10)
-        for i in range(main_count):
-            angle = (math.tau / main_count) * i + random.uniform(-0.2, 0.2)
-            length = random.uniform(WIDTH * 0.45, WIDTH * 0.75)
-            # 主要ヒビをジグザグの線分列として生成
-            points = [(cx, cy)]
-            x, y = cx, cy
-            segs = random.randint(4, 7)
-            for _ in range(segs):
-                seg_len = length / segs
-                angle += random.uniform(-0.25, 0.25)
-                x += math.cos(angle) * seg_len
-                y += math.sin(angle) * seg_len
-                points.append((x, y))
-            self.shatter_cracks.append({
-                "points": points,
-                "width": random.randint(2, 3),
-                "grow_delay": 0,  # 主要ヒビは最初から伸び始める
-            })
-            # 枝分かれ（各主要ヒビから1〜2本）
-            branch_n = random.randint(1, 2)
-            for _ in range(branch_n):
-                if len(points) < 3:
-                    continue
-                start_idx = random.randint(1, len(points) - 2)
-                sx, sy = points[start_idx]
-                bangle = angle + random.uniform(-1.0, 1.0)
-                blen = random.uniform(80, 200)
-                bpts = [(sx, sy)]
-                bx, by = sx, sy
-                bsegs = random.randint(2, 4)
-                for _ in range(bsegs):
-                    seg_len = blen / bsegs
-                    bangle += random.uniform(-0.3, 0.3)
-                    bx += math.cos(bangle) * seg_len
-                    by += math.sin(bangle) * seg_len
-                    bpts.append((bx, by))
-                self.shatter_cracks.append({
-                    "points": bpts,
-                    "width": 1,
-                    "grow_delay": random.randint(100, 400),
-                })
-
-        # 破片の生成：画面を扇形セクターに分割して三角形破片にする
-        self.shatter_shards = []
-        shard_count = 36
-        max_r = math.hypot(WIDTH, HEIGHT)  # 画面の対角線
-        for i in range(shard_count):
-            a1 = (math.tau / shard_count) * i + random.uniform(-0.05, 0.05)
-            a2 = (math.tau / shard_count) * (i + 1) + random.uniform(-0.05, 0.05)
-            r_inner = random.uniform(20, 90)
-            r_outer = max_r * random.uniform(0.85, 1.1)
-            # 4頂点の四角形破片（中心側2点・外側2点）
-            verts = [
-                (cx + math.cos(a1) * r_inner, cy + math.sin(a1) * r_inner),
-                (cx + math.cos(a2) * r_inner, cy + math.sin(a2) * r_inner),
-                (cx + math.cos(a2) * r_outer, cy + math.sin(a2) * r_outer),
-                (cx + math.cos(a1) * r_outer, cy + math.sin(a1) * r_outer),
-            ]
-            # 飛散方向（中心からセクターの中央方向）
-            mid_a = (a1 + a2) / 2
-            speed = random.uniform(0.15, 0.45)  # px/ms
-            vx = math.cos(mid_a) * speed
-            vy = math.sin(mid_a) * speed + 0.05  # 少し下方向バイアス
-            self.shatter_shards.append({
-                "verts": verts,
-                "vx": vx,
-                "vy": vy,
-                "rot": 0.0,
-                "rot_speed": random.uniform(-0.003, 0.003),  # rad/ms
-                "gravity": random.uniform(0.0008, 0.0015),   # px/ms^2
-                "center": (
-                    sum(v[0] for v in verts) / 4,
-                    sum(v[1] for v in verts) / 4,
-                ),
-            })
-
-        self.shatter_active = True
-        self.shatter_timer  = 0
-        self.state = "ending"   # メインループ側は ending として描画する
-
-    def _draw_shatter(self, dt):
-        """ガラス割れ演出の1フレーム描画。
-        終わったら shatter_active を False にして _start_ending() を呼ぶ。"""
-        screen = self.screen
-        self.shatter_timer += dt
-        t = self.shatter_timer
-
-        # フェーズ定義
-        T_CRACK_GROW   = 800    # 0〜800ms：ヒビが伸びる
-        T_FLASH        = 950    # 800〜950ms：白フラッシュ
-        T_SHARDS_END   = 1700   # 950〜1700ms：破片が飛散
-        T_TOTAL        = 1900   # 1700〜1900ms：暗転して次へ
-
-        # ベース：撃破時のスナップショットを表示
-        if self.shatter_snapshot is not None:
-            # 画面ゆれ（hit stop の演出）
-            shake = 0
-            if t < 200:
-                shake = int(8 * (1 - t / 200))
-            ox = random.randint(-shake, shake) if shake > 0 else 0
-            oy = random.randint(-shake, shake) if shake > 0 else 0
-            screen.blit(self.shatter_snapshot, (ox, oy))
-        else:
-            screen.fill(BLACK)
-
-        # ヒビを伸ばしながら描画
-        if t < T_FLASH:
-            for crack in self.shatter_cracks:
-                grow_t = max(0, t - crack["grow_delay"])
-                grow_ratio = min(1.0, grow_t / max(1, (T_CRACK_GROW - crack["grow_delay"])))
-                pts = crack["points"]
-                if grow_ratio <= 0 or len(pts) < 2:
-                    continue
-                # 何頂点まで描くか
-                total_segs = len(pts) - 1
-                visible_segs_f = grow_ratio * total_segs
-                full_segs = int(visible_segs_f)
-                partial   = visible_segs_f - full_segs
-
-                draw_pts = list(pts[:full_segs + 1])
-                if full_segs < total_segs and partial > 0:
-                    p0 = pts[full_segs]
-                    p1 = pts[full_segs + 1]
-                    draw_pts.append((
-                        p0[0] + (p1[0] - p0[0]) * partial,
-                        p0[1] + (p1[1] - p0[1]) * partial,
-                    ))
-                if len(draw_pts) >= 2:
-                    # 黒い太いヒビ（外側）+ 白いハイライト
-                    try:
-                        pygame.draw.lines(screen, (20, 20, 30), False,
-                                          draw_pts, crack["width"] + 2)
-                        pygame.draw.lines(screen, (240, 240, 255), False,
-                                          draw_pts, crack["width"])
-                    except Exception:
-                        pass
-
-        # フェーズ2：白フラッシュ（割れる瞬間）
-        if T_CRACK_GROW <= t < T_FLASH:
-            fr = (t - T_CRACK_GROW) / (T_FLASH - T_CRACK_GROW)
-            # 山なりに明るくなる（中央でピーク）
-            alpha = int(255 * (1 - abs(2 * fr - 1)))
-            flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            flash.fill((255, 255, 255, alpha))
-            screen.blit(flash, (0, 0))
-
-        # フェーズ3：破片が飛散
-        if t >= T_FLASH:
-            shard_t = t - T_FLASH
-            shard_max = T_SHARDS_END - T_FLASH
-
-            # 背景は暗くしていく
-            fade_ratio = min(1.0, shard_t / shard_max)
-            dark = pygame.Surface((WIDTH, HEIGHT))
-            dark.fill(BLACK)
-            dark.set_alpha(int(255 * fade_ratio))
-            screen.blit(dark, (0, 0))
-
-            # 各破片を移動して描画
-            for shard in self.shatter_shards:
-                # 物理更新（dt基準）
-                shard["vy"] += shard["gravity"] * dt
-                cx_old, cy_old = shard["center"]
-                shard["center"] = (
-                    cx_old + shard["vx"] * dt,
-                    cy_old + shard["vy"] * dt,
-                )
-                shard["rot"] += shard["rot_speed"] * dt
-
-                # 頂点を中心基準で回転・平行移動
-                ccx, ccy = shard["center"]
-                cos_r = math.cos(shard["rot"])
-                sin_r = math.sin(shard["rot"])
-                # 元の頂点から元の中心を引いて回転、新中心に足す
-                orig_verts = shard["verts"]
-                orig_cx = sum(v[0] for v in orig_verts) / 4
-                orig_cy = sum(v[1] for v in orig_verts) / 4
-                drawn = []
-                for vx, vy in orig_verts:
-                    rx = vx - orig_cx
-                    ry = vy - orig_cy
-                    nx = rx * cos_r - ry * sin_r + ccx
-                    ny = rx * sin_r + ry * cos_r + ccy
-                    drawn.append((nx, ny))
-
-                # 破片本体（暗い半透明＋白い縁）
-                try:
-                    poly_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-                    alpha_v = int(255 * (1 - fade_ratio * 0.6))
-                    pygame.draw.polygon(poly_surf, (30, 30, 50, alpha_v), drawn)
-                    pygame.draw.polygon(poly_surf, (220, 230, 255, alpha_v),
-                                        drawn, 1)
-                    screen.blit(poly_surf, (0, 0))
-                except Exception:
-                    pass
-
-        # 演出完了 → エンディング本編へ
-        if t >= T_TOTAL:
-            self.shatter_active = False
-            # メモリ解放
-            self.shatter_snapshot = None
-            self.shatter_cracks   = []
-            self.shatter_shards   = []
-            self._start_ending()
-
     def _start_ending(self):
         """ラスボス撃破→ENDING演出開始"""
         self._cancel_speed_boost()
         self._cancel_slow()
         self._cancel_gravity()
 
-        # ボス撃破のボーナス
+        # ボス撃破の達成ボーナス（クリアできた事自体への報酬）
         self.score += 1000
 
+        # クリアタイムボーナス（早ければ早いほど大きい）
+        # キー点 (秒, ボーナス) を折れ線で結ぶ：
+        #   0分    → 5000点
+        #   5分    → 1000点
+        #   5分半  →  700点
+        #   6分    →  570点
+        #   6分半  →  500点
+        #   7分    →  350点 ← ここを越えるとゼロ
+        BONUS_KEYPOINTS = [
+            (0,       5000),
+            (300_000, 1000),   # 5:00
+            (330_000,  700),   # 5:30
+            (360_000,  570),   # 6:00
+            (390_000,  500),   # 6:30
+            (420_000,  350),   # 7:00
+        ]
+        elapsed = self.elapsed_time
+        # 最後のキー点（7分）を超えたら 0
+        if elapsed >= BONUS_KEYPOINTS[-1][0]:
+            time_bonus = 0
+        else:
+            # 該当する2点間を線形補間
+            time_bonus = BONUS_KEYPOINTS[0][1]   # 念のため初期値
+            for i in range(len(BONUS_KEYPOINTS) - 1):
+                t0, b0 = BONUS_KEYPOINTS[i]
+                t1, b1 = BONUS_KEYPOINTS[i + 1]
+                if t0 <= elapsed <= t1:
+                    ratio = (elapsed - t0) / (t1 - t0)
+                    time_bonus = int(b0 + (b1 - b0) * ratio)
+                    break
+        self.score += time_bonus
+        # エンディング画面で表示するために保持
+        self.ending_time_bonus = time_bonus
+
+        # ボスも1体としてカウント
         total_defeated = sum(self.defeated_count.values()) + 1
         self.score_manager.add_score(
             self.mode, self.score, self.elapsed_time, total_defeated)
@@ -1518,11 +1319,6 @@ class Game:
 
     def draw_ending(self, dt):
         """ENDING画面の描画・アニメーション更新"""
-        # ボス撃破直後はガラス破壊演出を先に再生
-        if self.shatter_active:
-            self._draw_shatter(dt)
-            return
-
         self.ending_timer += dt
         screen = self.screen
 
@@ -1558,40 +1354,54 @@ class Game:
             font       = self.fonts["font"]
             small_font = self.fonts["small"]
 
-            panel = pygame.Surface((700, 340), pygame.SRCALPHA)
+            panel = pygame.Surface((700, 380), pygame.SRCALPHA)
             panel.fill((0, 0, 0, 200))
             panel_rect = panel.get_rect(center=(WIDTH // 2, HEIGHT // 2))
             screen.blit(panel, panel_rect)
 
             cx = WIDTH // 2
             t1 = big_font.render("CONGRATULATIONS!", True, GOLD)
-            screen.blit(t1, t1.get_rect(center=(cx, HEIGHT // 2 - 120)))
+            screen.blit(t1, t1.get_rect(center=(cx, HEIGHT // 2 - 140)))
 
             pygame.draw.line(screen, GOLD,
-                             (cx - 300, HEIGHT // 2 - 88),
-                             (cx + 300, HEIGHT // 2 - 88), 2)
+                             (cx - 300, HEIGHT // 2 - 105),
+                             (cx + 300, HEIGHT // 2 - 105), 2)
 
             t2 = font.render("FINAL BOSS DEFEATED!", True, BOSS_COLOR)
-            screen.blit(t2, t2.get_rect(center=(cx, HEIGHT // 2 - 60)))
+            screen.blit(t2, t2.get_rect(center=(cx, HEIGHT // 2 - 75)))
 
             total_defeated = sum(self.defeated_count.values()) + 1
             t3 = font.render(
                 f"Score: {self.score}   Enemies: {total_defeated}",
                 True, WHITE)
-            screen.blit(t3, t3.get_rect(center=(cx, HEIGHT // 2)))
+            screen.blit(t3, t3.get_rect(center=(cx, HEIGHT // 2 - 20)))
 
             t4 = font.render(
                 f"Time: {format_time(self.elapsed_time)}", True, WHITE)
-            screen.blit(t4, t4.get_rect(center=(cx, HEIGHT // 2 + 50)))
+            screen.blit(t4, t4.get_rect(center=(cx, HEIGHT // 2 + 25)))
+
+            # クリアタイムボーナス（早ければ早いほど大きい）
+            bonus = self.ending_time_bonus
+            if bonus >= 2600:        # 3分以内クリアでPERFECT
+                bonus_color = GOLD
+                bonus_label = f"⚡ TIME BONUS: +{bonus}  (PERFECT!)"
+            elif bonus > 0:
+                bonus_color = (255, 180, 60)
+                bonus_label = f"⚡ TIME BONUS: +{bonus}"
+            else:
+                bonus_color = GRAY
+                bonus_label = "TIME BONUS: ---"
+            t5 = font.render(bonus_label, True, bonus_color)
+            screen.blit(t5, t5.get_rect(center=(cx, HEIGHT // 2 + 70)))
 
             pygame.draw.line(screen, GOLD,
-                             (cx - 300, HEIGHT // 2 + 88),
-                             (cx + 300, HEIGHT // 2 + 88), 2)
+                             (cx - 300, HEIGHT // 2 + 105),
+                             (cx + 300, HEIGHT // 2 + 105), 2)
 
             if (self.ending_timer // 600) % 2 == 0:
-                t5 = small_font.render(
+                t6 = small_font.render(
                     "Press ENTER or click to exit", True, GRAY)
-                screen.blit(t5, t5.get_rect(center=(cx, HEIGHT // 2 + 130)))
+                screen.blit(t6, t6.get_rect(center=(cx, HEIGHT // 2 + 145)))
 
     # ============================================
     # ゲームオーバー判定
@@ -1616,6 +1426,22 @@ class Game:
             self.mode, self.score, self.elapsed_time, total_defeated)
 
         self.state = "gameover"
+
+    # ============================================
+    # 回復ストック使用
+    # ============================================
+    def _consume_heal_stock(self):
+        """SPACEキーで呼ばれる。ストックが1個以上ありHPが満タンでなければ
+        ストックを1個消費してHEAL_AMOUNTぶんHPを回復する。"""
+        if self.heal_stock <= 0:
+            return
+        if self.player_hp >= PLAYER_MAX_HP:
+            # HP満タン時は消費しない（無駄遣い防止）
+            return
+        self.heal_stock -= 1
+        self.player_hp = min(PLAYER_MAX_HP, self.player_hp + HEAL_AMOUNT)
+        # 使用フラッシュ演出（HPバーが緑にピカッと光る）
+        self.heal_use_flash_timer = 500   # 0.5秒
 
     # ============================================
     # 描画 - プレイ画面
@@ -1978,19 +1804,30 @@ class Game:
     def _draw_player_hp(self):
         screen     = self.screen
         small_font = self.fonts["small"]
+        mini_font  = self.fonts["mini"]
         bar_x = ENEMY_X
         bar_y = HEIGHT - 80
         bar_w = ENEMY_WIDTH
         bar_h = 18
 
-        panel = pygame.Surface((bar_w + 20, bar_h + 60), pygame.SRCALPHA)
+        # ハートストック表示用にパネルを少し下に伸ばす
+        panel = pygame.Surface((bar_w + 20, bar_h + 90), pygame.SRCALPHA)
         panel.fill((0, 0, 0, 150))
         screen.blit(panel, (bar_x - 10, bar_y - 30))
 
         label = small_font.render("Your HP", True, WHITE)
         screen.blit(label, (bar_x, bar_y - 25))
 
-        hp_color = INVINCIBLE_BLOCK_COLOR if self.invincible_timer > 0 else GREEN
+        # 使用時フラッシュ：HPバーが緑→白くピカッと光る
+        if self.heal_use_flash_timer > 0:
+            ratio = self.heal_use_flash_timer / 500
+            # 緑(0,255,0)から白(255,255,255)に補間
+            r = int(0   + (255 - 0)   * ratio)
+            g = 255
+            b = int(0   + (255 - 0)   * ratio)
+            hp_color = (r, g, b)
+        else:
+            hp_color = INVINCIBLE_BLOCK_COLOR if self.invincible_timer > 0 else GREEN
 
         pygame.draw.rect(screen, WHITE,
                          (bar_x - 2, bar_y - 2, bar_w + 4, bar_h + 4),
@@ -2004,6 +1841,51 @@ class Game:
         text = small_font.render(
             f"{self.player_hp}/{PLAYER_MAX_HP}", True, WHITE)
         screen.blit(text, (bar_x, bar_y + bar_h + 5))
+
+        # 回復ストック表示（ハート2個並び）
+        stock_label = mini_font.render("HEAL [SPACE]", True, WHITE)
+        screen.blit(stock_label, (bar_x, bar_y + bar_h + 28))
+        heart_y = bar_y + bar_h + 45
+        heart_size = 18
+        gap = 6
+        for i in range(self.MAX_HEAL_STOCK):
+            hx = bar_x + i * (heart_size + gap)
+            filled = (i < self.heal_stock)
+            self._draw_heart(hx, heart_y, heart_size, filled)
+
+    def _draw_heart(self, x, y, size, filled):
+        """ハート型を描画。filled=Trueなら赤、Falseならグレー枠だけ"""
+        screen = self.screen
+        s = size
+        # 中心
+        cx = x + s // 2
+        cy = y + s // 2
+
+        if filled:
+            color = (235, 60, 90)   # 赤
+            outline = (255, 255, 255)
+        else:
+            color = (40, 40, 50)    # 暗いグレー（空ストック）
+            outline = (120, 120, 130)
+
+        # ハート形：左右2つの円＋下向き三角の組み合わせ
+        r = s // 4
+        # 左の丸
+        pygame.draw.circle(screen, color, (cx - r, cy - r // 2), r)
+        # 右の丸
+        pygame.draw.circle(screen, color, (cx + r, cy - r // 2), r)
+        # 下の三角
+        pts = [
+            (cx - 2 * r, cy - r // 2),
+            (cx + 2 * r, cy - r // 2),
+            (cx, cy + r * 2),
+        ]
+        pygame.draw.polygon(screen, color, pts)
+        # 輪郭（簡易：枠あり）
+        if not filled:
+            pygame.draw.circle(screen, outline, (cx - r, cy - r // 2), r, 1)
+            pygame.draw.circle(screen, outline, (cx + r, cy - r // 2), r, 1)
+            pygame.draw.polygon(screen, outline, pts, 1)
 
     def _draw_status_effects(self):
         screen    = self.screen
@@ -2255,10 +2137,7 @@ class Game:
     def handle_click(self, mouse_pos):
         # gameover / ending 画面でクリックされたら「終了」フラグを立てる
         # （main.py がこれを検知してメニュー画面に戻す）
-        # ただしガラス破壊演出中はスキップさせない
         if self.state in ("gameover", "ending"):
-            if self.shatter_active:
-                return
             self.finished = True
 
     def handle_keydown(self, key):
@@ -2271,6 +2150,10 @@ class Game:
                 if key in (pygame.K_SPACE, pygame.K_RETURN):
                     self.waiting_start = False
                     self.countdown_timer = 3000   # 3秒(3000ms)カウントダウン
+            elif self.countdown_timer <= 0:
+                # プレイ中：SPACEで回復ストックを消費
+                if key == pygame.K_SPACE:
+                    self._consume_heal_stock()
 
         elif self.state == "gameover":
             if key == pygame.K_RETURN:
@@ -2278,9 +2161,6 @@ class Game:
 
         elif self.state == "ending":
             if key == pygame.K_RETURN:
-                # ガラス破壊演出中はスキップ不可
-                if self.shatter_active:
-                    return
                 self.finished = True
 
     # ============================================
