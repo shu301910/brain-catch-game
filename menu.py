@@ -668,6 +668,19 @@ class MenuScreen:
         desc_surf = jp_mini.render(desc, True, WHITE)
         canvas.blit(desc_surf, (x + bw + 16, y + 28))
 
+    def _howto_draw_mystery_icon(self, canvas, x, y, size):
+        """ボス用の「？」ミステリーアイコンを描く（ネタバレ防止）"""
+        # 暗い紫の角丸背景
+        pygame.draw.rect(canvas, (45, 20, 60),
+                         (x, y, size, size), border_radius=8)
+        pygame.draw.rect(canvas, (180, 0, 220),
+                         (x, y, size, size), 3, border_radius=8)
+        # 中央に大きな「？」
+        big_font = self.fonts["big"]
+        q = big_font.render("?", True, (220, 100, 255))
+        q_rect = q.get_rect(center=(x + size // 2, y + size // 2 + 2))
+        canvas.blit(q, q_rect)
+
     def _howto_draw_monster_legend(self, canvas, x, y, key):
         """モンスターの凡例を描画：[画像] タイトル — 説明（複数行可）"""
         data = self._monster_legend_data(key)
@@ -678,29 +691,27 @@ class MenuScreen:
         # アイコン（モンスター画像 or プレースホルダー）
         icon_size = 64
         monster_imgs = self.images.get("monsters", {})
-        boss_img     = self.images.get("boss")
 
-        img = None
         if img_key == "boss":
-            img = boss_img
+            # ボスはネタバレ防止で「？」マークのアイコンにする
+            self._howto_draw_mystery_icon(canvas, x, y + 10, icon_size)
         else:
             img = monster_imgs.get(img_key)
-
-        if img is not None:
-            scaled = pygame.transform.smoothscale(img, (icon_size, icon_size))
-            canvas.blit(scaled, (x, y + 10))
-        else:
-            # フォールバック：色付き四角
-            color_map = {
-                "red":    (200, 60, 60),
-                "blue":   (60, 100, 220),
-                "yellow": (255, 220, 30),
-                "green":  (50, 200, 50),
-                "dark":   (80, 60, 50),
-                "boss":   (180, 0, 220),
-            }
-            pygame.draw.rect(canvas, color_map.get(img_key, (80, 80, 80)),
-                             (x, y + 10, icon_size, icon_size), border_radius=8)
+            if img is not None:
+                scaled = pygame.transform.smoothscale(img, (icon_size, icon_size))
+                canvas.blit(scaled, (x, y + 10))
+            else:
+                # フォールバック：色付き四角
+                color_map = {
+                    "red":    (200, 60, 60),
+                    "blue":   (60, 100, 220),
+                    "yellow": (255, 220, 30),
+                    "green":  (50, 200, 50),
+                    "dark":   (80, 60, 50),
+                }
+                pygame.draw.rect(canvas, color_map.get(img_key, (80, 80, 80)),
+                                 (x, y + 10, icon_size, icon_size),
+                                 border_radius=8)
 
         # タイトル・説明（日本語フォント）
         jp_small = self.fonts.get("jp_small", self.fonts["small"])
